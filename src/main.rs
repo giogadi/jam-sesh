@@ -1,8 +1,8 @@
-#[macro_use]
-extern crate serde_derive;
+// #[macro_use]
+// extern crate serde_derive;
 
-extern crate serde;
-extern crate serde_json;
+// extern crate serde;
+// extern crate serde_json;
 extern crate websocket;
 
 use std::sync::{Mutex, Arc};
@@ -12,18 +12,17 @@ use websocket::OwnedMessage;
 use websocket::sync::Server;
 use websocket::ws::Receiver;
 
-#[derive(Serialize, Deserialize, Debug)]
-struct Message {
-    beats: Vec<bool>
-}
+// #[derive(Serialize, Deserialize, Debug)]
+// struct Message {
+//     sequence: Vec<bool>,
+//     instrument: String
+// }
 
 fn main() {
     let server = Server::bind("127.0.0.1:2794").unwrap();
-    let is_kick = Arc::new(Mutex::new(true));
-    let connections : Arc<Mutex<Vec<(bool, Sender<String>)>>> =
+    let connections : Arc<Mutex<Vec<(usize, Sender<String>)>>> =
         Arc::new(Mutex::new(Vec::new()));
     for request in server.filter_map(Result::ok) {
-        let is_kick_rc = Arc::clone(&is_kick);
         let connections_rc = Arc::clone(&connections);
         thread::spawn(move || {
             if !request.protocols().contains(&"giogadi".to_string()) {
@@ -35,17 +34,12 @@ fn main() {
             println!("Connection from {}", ip);
 
             let (tx, rx) = channel();
-            let is_kick = {
-                let mut is_kick = is_kick_rc.lock().unwrap();
+            let connection_id = {
                 let mut connections = connections_rc.lock().unwrap();
-                connections.push((*is_kick, tx.clone()));
-                let old_is_kick = *is_kick;
-                *is_kick = !*is_kick;
-                old_is_kick
+                let new_connection_id = connections.len();
+                connections.push((new_connection_id, tx.clone()));
+                new_connection_id
             };
-            let instrument = if is_kick { "Kick" } else { "Snare" };
-            let message = OwnedMessage::Text(instrument.to_string());
-            client.send_message(&message).unwrap();
 
             client.stream_ref().set_read_timeout(Some(std::time::Duration::new(1, 0))).ok();
 
@@ -56,9 +50,9 @@ fn main() {
                 match result {
                     Ok(OwnedMessage::Text(s)) => {
                         println!("{}", &s);
-                        for &(c_is_kick, ref c_tx) in
+                        for &(c_id, ref c_tx) in
                             connections_rc.lock().unwrap().iter() {
-                                if c_is_kick == is_kick {
+                                if c_id == connection_id {
                                     continue;
                                 }
                                 c_tx.send(s.clone()).unwrap();
