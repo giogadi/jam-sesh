@@ -5,63 +5,74 @@ extern crate serde;
 extern crate serde_json;
 extern crate websocket;
 
-use std::sync::{Mutex, Arc};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::thread;
-use websocket::OwnedMessage;
 use websocket::sync::Server;
 use websocket::ws::Receiver;
+use websocket::OwnedMessage;
 
-#[derive(Debug,Clone,Copy,PartialEq,Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ClientId(usize);
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 struct MessageToClients {
     from_id: ClientId,
-    data: String
+    data: String,
 }
 
 enum MessageToMain {
     Update(MessageToClients),
-    Disconnect(ClientId)
+    Disconnect(ClientId),
 }
 
 #[derive(Serialize, Debug)]
 struct ClientState {
     sequence: Vec<bool>,
-    instrument: String
+    instrument: String,
 }
 
-fn serve_client(to_main: mpsc::Sender<MessageToMain>,
-                from_main: mpsc::Receiver<MessageToClients>,
-                client: websocket::sync::Client<std::net::TcpStream>,
-                id: ClientId) {
-    client.stream_ref().set_read_timeout(
-        Some(std::time::Duration::new(1, 0))).ok();
+fn serve_client(
+    to_main: mpsc::Sender<MessageToMain>,
+    from_main: mpsc::Receiver<MessageToClients>,
+    client: websocket::sync::Client<std::net::TcpStream>,
+    id: ClientId,
+) {
+    client
+        .stream_ref()
+        .set_read_timeout(Some(std::time::Duration::new(1, 0)))
+        .ok();
     let (mut from_client, mut to_client) = client.split().unwrap();
     loop {
-        let result = from_client.receiver.recv_message(&mut from_client.stream);
+        let result = from_client
+            .receiver
+            .recv_message(&mut from_client.stream);
         match result {
             Ok(OwnedMessage::Text(s)) => {
                 // TODO separate logging
                 println!("{} {}", id.0, &s);
                 let to_main_message = MessageToClients {
                     from_id: id,
-                    data: s
+                    data: s,
                 };
-                to_main.send(MessageToMain::Update(to_main_message)).unwrap();
+                to_main
+                    .send(MessageToMain::Update(to_main_message))
+                    .unwrap();
             }
             Ok(OwnedMessage::Close(maybe_close_data)) => {
-                let disconnect_string =
-                    match maybe_close_data {
-                        Some(close_data) => close_data.reason,
-                        None => "".to_string()
-                    };
+                let disconnect_string = match maybe_close_data {
+                    Some(close_data) => close_data.reason,
+                    None => "".to_string(),
+                };
                 // TODO separate logging
                 // TODO output ip addr too
-                println!("Client {}) disconnected: {}",
-                         id.0, disconnect_string);
-                to_main.send(MessageToMain::Disconnect(id)).unwrap();
+                println!(
+                    "Client {}) disconnected: {}",
+                    id.0, disconnect_string
+                );
+                to_main
+                    .send(MessageToMain::Disconnect(id))
+                    .unwrap();
                 break;
             }
             // TODO log what else could happen here
@@ -86,17 +97,23 @@ fn serve_client(to_main: mpsc::Sender<MessageToMain>,
 fn main() {
     let server = Server::bind("0.0.0.0:2794").unwrap();
     let (to_main, from_threads) = mpsc::channel();
-    let connections: Arc<Mutex<Vec<(ClientId,
-                                    mpsc::Sender<MessageToClients>)>>> =
-        Arc::new(Mutex::new(Vec::new()));
+    let connections: Arc<
+        Mutex<Vec<(ClientId, mpsc::Sender<MessageToClients>)>>,
+    > = Arc::new(Mutex::new(Vec::new()));
     let thread_connections = Arc::clone(&connections);
     thread::spawn(move || {
         for request in server.filter_map(Result::ok) {
-            if !request.protocols().contains(&"giogadi".to_string()) {
+            if !request
+                .protocols()
+                .contains(&"giogadi".to_string())
+            {
                 request.reject().unwrap();
                 continue;
             }
-            let client = request.use_protocol("giogadi").accept().unwrap();
+            let client = request
+                .use_protocol("giogadi")
+                .accept()
+                .unwrap();
             let ip = client.peer_addr().unwrap();
             // TODO separate connection logs from message transmission
             // logs
@@ -127,21 +144,24 @@ fn main() {
             MessageToMain::Disconnect(disconnecting_id) => {
                 let default_client_state = ClientState {
                     sequence: vec![false; 16],
-                    instrument: "kick".to_string()
+                    instrument: "kick".to_string(),
                 };
                 let state_json =
                     serde_json::to_string(&default_client_state).unwrap();
                 let message_to_clients = MessageToClients {
                     from_id: disconnecting_id,
-                    data: state_json
+                    data: state_json,
                 };
                 let mut disconnecting_ix: Option<usize> = None;
                 for (c_ix, &(c_id, ref to_thread)) in
-                    connections.iter().enumerate() {
+                    connections.iter().enumerate()
+                {
                     if c_id == disconnecting_id {
                         disconnecting_ix = Some(c_ix);
                     } else {
-                        to_thread.send(message_to_clients.clone()).unwrap();
+                        to_thread
+                            .send(message_to_clients.clone())
+                            .unwrap();
                     }
                 }
                 connections.swap_remove(disconnecting_ix.unwrap());
