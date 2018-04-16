@@ -51,13 +51,38 @@ function openSocket() {
     });
 }
 
-function updateStateFromServerMessage(state, event) {
-    let newState = JSON.parse(event.data);
-    // TODO can we just do state = newState?
-    console.log("new remote instrument: " + newState.instrument);
-    console.log("new remote sequence: " + newState.sequence);
-    state.instrument = newState.instrument;
-    state.sequence = newState.sequence;
+function updateStateFromServerMessage(remoteStates, event) {
+    let update = JSON.parse(event.data);
+    let fromRemoteId = update.client_id;
+    let knownStateIx = -1;
+    for (i = 0; i < remoteStates.length; i++) {
+        if (remoteStates[i].client_id === fromRemoteId) {
+            knownStateIx = i;
+            break;
+        }
+    }
+    if (update.update_type === "disconnect") {
+        if (knownStateIx === -1) {
+            throw "disconnect message received for unknown client ID";
+        }
+        // splice removes 1 element, starting at knownStateIx
+        remoteStates.splice(knownStateIx, 1);
+        console.log("client " + fromRemoteId + " disconnected");
+    } else if (update.update_type === "state") {
+        let newState = {
+            client_id: fromRemoteId,
+            sequence: update.client_state.sequence,
+            instrument: update.client_state.instrument
+        };
+        if (knownStateIx === -1) {
+            remoteStates.push(newState);
+        } else {
+            remoteStates[knownStateIx].sequence = update.client_state.sequence;
+            remoteStates[knownStateIx].instrument =
+                update.client_state.instrument;
+        }
+        console.log("updated state from client " + fromRemoteId);
+    }
 }
 
 function getInstrumentNameFromLocalState(localState) {
@@ -81,10 +106,10 @@ function onBeatBoxChange(event, socket, localState) {
     console.log("Sent sequence " + localStateMsg.sequence);
 }
 
-function setupServerEvents(localState, remoteState) {
+function setupServerEvents(localState, remoteStates) {
     openSocket().then(function(socket) {
         socket.onmessage =
-            event => updateStateFromServerMessage(remoteState, event);
+            event => updateStateFromServerMessage(remoteStates, event);
         for (b of localState.beatBoxes) {
             b.onchange = e =>
                 onBeatBoxChange(e, socket, localState);
@@ -114,20 +139,22 @@ function getInstrumentSound(audio, instrumentName) {
 
 const NUM_BEATS = 16;
 
-function perBeat(audio, playbackState, localState, remoteState) {
+function perBeat(audio, playbackState, localState, remoteStates) {
     localSequence = localState.beatBoxes.map(b => b.checked);
     playBeat(playbackState.beatIndex, localSequence,
              audio.audioCtx,
              getInstrumentSound(
                  audio,
                  getInstrumentNameFromLocalState(localState)));
-    playBeat(playbackState.beatIndex, remoteState.sequence,
-             audio.audioCtx,
-             getInstrumentSound(audio, remoteState.instrument));
+    for (state of remoteStates) {
+        playBeat(playbackState.beatIndex, state.sequence,
+                 audio.audioCtx,
+                 getInstrumentSound(audio, state.instrument));
+    }
     playbackState.beatIndex = (playbackState.beatIndex + 1) % NUM_BEATS;
 }
 
-function togglePlayPause(playbackState, audio, localState, remoteState) {
+function togglePlayPause(playbackState, audio, localState, remoteStates) {
     if (playbackState.playIntervalId === null) {
         const bpm = 240;
         const ticksPerBeat = (1 / bpm) * 60 * 1000;
@@ -135,10 +162,10 @@ function togglePlayPause(playbackState, audio, localState, remoteState) {
         // first time until after the interval duration; we want
         // playback to start as soon as the user hits play, so we
         // manually invoke the playback function once.
-        perBeat(audio, playbackState, localState, remoteState);
+        perBeat(audio, playbackState, localState, remoteStates);
         playbackState.playIntervalId =
             window.setInterval(function() {
-                perBeat(audio, playbackState, localState, remoteState)
+                perBeat(audio, playbackState, localState, remoteStates)
             },
                                /*delay=*/ticksPerBeat);
     } else {
@@ -148,39 +175,38 @@ function togglePlayPause(playbackState, audio, localState, remoteState) {
     }
 }
 
-function init() {
-    let localState = {
+function initUi(numBeats) {
+    let uiState = {
         beatBoxes: [],
         kickRadio: null,
         snareRadio: null
-    };
-    for (i = 0; i < NUM_BEATS; i++) {
+    }
+    for (i = 0; i < numBeats; i++) {
         let checkBox = document.createElement('input');
         checkBox.setAttribute('type', 'checkbox');
         checkBox.checked = i % 4 === 0;
-        localState.beatBoxes.push(document.body.appendChild(checkBox));
+        uiState.beatBoxes.push(document.body.appendChild(checkBox));
     }
     let kickRadio = document.createElement('input');
     kickRadio.setAttribute('type', 'radio');
     kickRadio.setAttribute('name', 'instrument');
     kickRadio.setAttribute('value', 'kick');
     kickRadio.checked = true;
-    localState.kickRadio = document.body.appendChild(kickRadio);
+    uiState.kickRadio = document.body.appendChild(kickRadio);
 
     let snareRadio = document.createElement('input');
     snareRadio.setAttribute('type', 'radio');
     snareRadio.setAttribute('name', 'instrument');
     snareRadio.setAttribute('value', 'snare');
-    localState.snareRadio = document.body.appendChild(snareRadio);
+    uiState.snareRadio = document.body.appendChild(snareRadio);
 
-    let remoteState = {
-        sequence: [],
-        instrument: 'kick'
-    };
-    for (i = 0; i < NUM_BEATS; i++) {
-        remoteState.sequence.push(false);
-    }
-    setupServerEvents(localState, remoteState);
+    return uiState;
+}
+
+function init() {
+    let localState = initUi(NUM_BEATS);
+    let remoteStates = [];
+    setupServerEvents(localState, remoteStates);
     let playbackState = {
         playIntervalId: null,
         beatIndex: 0
@@ -189,7 +215,7 @@ function init() {
         function keyCallback(event) {
             if (event.key === " " ||
                 event.key === "SpaceBar") {
-                togglePlayPause(playbackState, audio, localState, remoteState);
+                togglePlayPause(playbackState, audio, localState, remoteStates);
             }
         }
         document.addEventListener('keydown', keyCallback);

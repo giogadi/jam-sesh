@@ -15,26 +15,39 @@ use websocket::OwnedMessage;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ClientId(usize);
 
+#[derive(Serialize, Deserialize, Debug)]
+struct MessageOutToClient {
+    client_id: usize,
+    update_type: String, // Can be "state" or "disconnect"
+    client_state: StateFromClient,
+}
+
 #[derive(Debug, Clone)]
-struct MessageToClients {
-    from_id: ClientId,
-    data: String,
+enum Update {
+    State(StateFromClient),
+    Disconnect,
 }
 
-enum MessageToMain {
-    Update(MessageToClients),
-    Disconnect(ClientId),
+#[derive(Debug, Clone)]
+struct UpdateMessageFromClientHandler {
+    client_id: ClientId,
+    update: Update,
 }
 
-#[derive(Serialize, Debug)]
-struct ClientState {
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct StateFromClient {
     sequence: Vec<bool>,
     instrument: String,
 }
 
+// TODO: Currently, when a new client connects, it doesn't know the
+// state of any of the other clients until they send a message. Maybe
+// store the latest version of known state from all currently
+// connected clients and send that message to the new client upon
+// connection.
 fn serve_client(
-    to_main: mpsc::Sender<MessageToMain>,
-    from_main: mpsc::Receiver<MessageToClients>,
+    to_main: mpsc::Sender<UpdateMessageFromClientHandler>,
+    from_main: mpsc::Receiver<UpdateMessageFromClientHandler>,
     client: websocket::sync::Client<std::net::TcpStream>,
     id: ClientId,
 ) {
@@ -51,13 +64,11 @@ fn serve_client(
             Ok(OwnedMessage::Text(s)) => {
                 // TODO separate logging
                 println!("{} {}", id.0, &s);
-                let to_main_message = MessageToClients {
-                    from_id: id,
-                    data: s,
+                let update_to_other_clients = UpdateMessageFromClientHandler {
+                    client_id: id,
+                    update: Update::State(serde_json::from_str(&s).unwrap()),
                 };
-                to_main
-                    .send(MessageToMain::Update(to_main_message))
-                    .unwrap();
+                to_main.send(update_to_other_clients).unwrap();
             }
             Ok(OwnedMessage::Close(maybe_close_data)) => {
                 let disconnect_string = match maybe_close_data {
@@ -67,12 +78,16 @@ fn serve_client(
                 // TODO separate logging
                 // TODO output ip addr too
                 println!(
-                    "Client {}) disconnected: {}",
+                    "Client {} disconnected: {}",
                     id.0, disconnect_string
                 );
-                to_main
-                    .send(MessageToMain::Disconnect(id))
-                    .unwrap();
+                // TODO I guess we technically update the main thread
+                // as well ugh
+                let update_to_other_clients = UpdateMessageFromClientHandler {
+                    client_id: id,
+                    update: Update::Disconnect,
+                };
+                to_main.send(update_to_other_clients).unwrap();
                 break;
             }
             // TODO log what else could happen here
@@ -81,10 +96,28 @@ fn serve_client(
         let result = from_main.try_recv();
         match result {
             Ok(message_from_main) => {
-                assert_ne!(message_from_main.from_id, id);
-                let message_to_client =
-                    OwnedMessage::Text(message_from_main.data);
-                to_client.send_message(&message_to_client).ok();
+                assert_ne!(message_from_main.client_id, id);
+                let message_to_client = match message_from_main.update {
+                    Update::State(client_state) => MessageOutToClient {
+                        client_id: message_from_main.client_id.0,
+                        // TODO: read about strings plsthx
+                        update_type: "state".to_string(),
+                        client_state: client_state,
+                    },
+                    Update::Disconnect => MessageOutToClient {
+                        client_id: message_from_main.client_id.0,
+                        update_type: "disconnect".to_string(),
+                        client_state: StateFromClient {
+                            sequence: vec![],
+                            instrument: "".to_string(),
+                        },
+                    },
+                };
+                let json_msg =
+                    serde_json::to_string(&message_to_client).unwrap();
+                to_client
+                    .send_message(&OwnedMessage::Text(json_msg))
+                    .unwrap();
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => (),
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -98,10 +131,16 @@ fn main() {
     let server = Server::bind("0.0.0.0:2794").unwrap();
     let (to_main, from_threads) = mpsc::channel();
     let connections: Arc<
-        Mutex<Vec<(ClientId, mpsc::Sender<MessageToClients>)>>,
+        Mutex<
+            Vec<(
+                ClientId,
+                mpsc::Sender<UpdateMessageFromClientHandler>,
+            )>,
+        >,
     > = Arc::new(Mutex::new(Vec::new()));
     let thread_connections = Arc::clone(&connections);
     thread::spawn(move || {
+        let mut next_id = 0;
         for request in server.filter_map(Result::ok) {
             if !request
                 .protocols()
@@ -119,53 +158,42 @@ fn main() {
             // logs
             println!("Connection from {}", ip);
             let mut connections = thread_connections.lock().unwrap();
-            let new_id = ClientId(connections.len());
             let (to_thread, from_main) = mpsc::channel();
-            connections.push((new_id, to_thread));
+            connections.push((ClientId(next_id), to_thread));
             let to_main_clone = to_main.clone();
             thread::spawn(move || {
-                serve_client(to_main_clone, from_main, client, new_id);
+                serve_client(
+                    to_main_clone,
+                    from_main,
+                    client,
+                    ClientId(next_id),
+                );
             });
+            next_id += 1;
         }
     });
 
     for msg_from_client in from_threads.iter() {
         let mut connections = connections.lock().unwrap();
-        match msg_from_client {
-            MessageToMain::Update(msg_to_clients) => {
-                for &(c_id, ref to_thread) in connections.iter() {
-                    if msg_to_clients.from_id == c_id {
-                        continue;
-                    }
-                    // TODO can we make this a move?
-                    to_thread.send(msg_to_clients.clone()).unwrap();
-                }
-            }
-            MessageToMain::Disconnect(disconnecting_id) => {
-                let default_client_state = ClientState {
-                    sequence: vec![false; 16],
-                    instrument: "kick".to_string(),
-                };
-                let state_json =
-                    serde_json::to_string(&default_client_state).unwrap();
-                let message_to_clients = MessageToClients {
-                    from_id: disconnecting_id,
-                    data: state_json,
-                };
-                let mut disconnecting_ix: Option<usize> = None;
-                for (c_ix, &(c_id, ref to_thread)) in
-                    connections.iter().enumerate()
-                {
-                    if c_id == disconnecting_id {
-                        disconnecting_ix = Some(c_ix);
-                    } else {
-                        to_thread
-                            .send(message_to_clients.clone())
-                            .unwrap();
-                    }
-                }
+        match msg_from_client.update {
+            Update::Disconnect => {
+                let disconnecting_id = msg_from_client.client_id;
+                let disconnecting_ix =
+                    connections.iter().position(|&(c_id, _)| {
+                        return c_id == disconnecting_id;
+                    });
+                assert!(disconnecting_ix.is_some());
                 connections.swap_remove(disconnecting_ix.unwrap());
             }
+            Update::State(_) => (),
+        }
+        for &(c_id, ref to_thread) in connections.iter() {
+            if c_id == msg_from_client.client_id {
+                continue;
+            }
+            // TODO: here we clone the client message every time. Can
+            // this be done more efficiently?
+            to_thread.send(msg_from_client.clone()).unwrap();
         }
     }
 }
