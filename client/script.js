@@ -51,9 +51,48 @@ function openSocket() {
     });
 }
 
-function updateStateFromServerMessage(remoteStates, event) {
+const NUM_BEATS = 16;
+
+function updateStateFromServerMessage(
+    localState, remoteStates, event) {
     let update = JSON.parse(event.data);
+    console.log("Received message " + JSON.stringify(update));
+    if (update.update_type === "intro") {
+        localState.id = update.client_id;
+        remoteStates.length = 0;  // Clear the remoteStates
+        for (client_state of update.client_states) {
+            if (client_state.client_id === localState.id) {
+                if (client_state.sequence.length !=
+                    localState.beatBoxes.length) {
+                    throw "Mismatch in beat count!";
+                }
+                if (localState.beatBoxes.length != NUM_BEATS) {
+                    throw "wrong # of beats!";
+                }
+                for (let i = 0; i < NUM_BEATS; i++) {
+                    localState.beatBoxes[i].checked =
+                        client_state.sequence[i];
+                }
+                localState.instrument = client_state.instrument;
+            } else {
+                remoteStates.push({
+                    client_id: client_state.client_id,
+                    sequence: client_state.sequence,
+                    instrument: client_state.instrument
+                });
+            }
+        }
+        return;
+    }
+
+    if (localState.id < 0) {
+        throw "received server update without being assigned an ID";
+    }
+
     let fromRemoteId = update.client_id;
+    if (fromRemoteId === localState.id) {
+        throw "received server update from client with same ID as me";
+    }
     let knownStateIx = -1;
     for (i = 0; i < remoteStates.length; i++) {
         if (remoteStates[i].client_id === fromRemoteId) {
@@ -97,7 +136,6 @@ function getInstrumentNameFromLocalState(localState) {
 
 function onBeatBoxChange(event, socket, localState) {
     let localStateMsg = {
-        // TODO does order matter?
         sequence: localState.beatBoxes.map(b => b.checked),
         instrument: getInstrumentNameFromLocalState(localState)
     };
@@ -109,7 +147,8 @@ function onBeatBoxChange(event, socket, localState) {
 function setupServerEvents(localState, remoteStates) {
     openSocket().then(function(socket) {
         socket.onmessage =
-            event => updateStateFromServerMessage(remoteStates, event);
+            event => updateStateFromServerMessage(
+                localState, remoteStates, event);
         for (b of localState.beatBoxes) {
             b.onchange = e =>
                 onBeatBoxChange(e, socket, localState);
@@ -137,8 +176,6 @@ function getInstrumentSound(audio, instrumentName) {
     return sound;
 }
 
-const NUM_BEATS = 16;
-
 function perBeat(audio, playbackState, localState, remoteStates) {
     localSequence = localState.beatBoxes.map(b => b.checked);
     playBeat(playbackState.beatIndex, localSequence,
@@ -154,7 +191,8 @@ function perBeat(audio, playbackState, localState, remoteStates) {
     playbackState.beatIndex = (playbackState.beatIndex + 1) % NUM_BEATS;
 }
 
-function togglePlayPause(playbackState, audio, localState, remoteStates) {
+function togglePlayPause(
+    playbackState, audio, localState, remoteStates) {
     if (playbackState.playIntervalId === null) {
         const bpm = 240;
         const ticksPerBeat = (1 / bpm) * 60 * 1000;
@@ -165,7 +203,7 @@ function togglePlayPause(playbackState, audio, localState, remoteStates) {
         perBeat(audio, playbackState, localState, remoteStates);
         playbackState.playIntervalId =
             window.setInterval(function() {
-                perBeat(audio, playbackState, localState, remoteStates)
+                perBeat(audio, playbackState, localState, remoteStates);
             },
                                /*delay=*/ticksPerBeat);
     } else {
@@ -179,12 +217,13 @@ function initUi(numBeats) {
     let uiState = {
         beatBoxes: [],
         kickRadio: null,
-        snareRadio: null
+        snareRadio: null,
+        // TODO: Pls. This is terrible and doesn't belong here.
+        id: -1
     }
     for (i = 0; i < numBeats; i++) {
         let checkBox = document.createElement('input');
         checkBox.setAttribute('type', 'checkbox');
-        checkBox.checked = i % 4 === 0;
         uiState.beatBoxes.push(document.body.appendChild(checkBox));
     }
     let kickRadio = document.createElement('input');
@@ -206,7 +245,7 @@ function initUi(numBeats) {
 function init() {
     let localState = initUi(NUM_BEATS);
     let remoteStates = [];
-    setupServerEvents(localState, remoteStates);
+    setupServerEvents(localState, remoteStates, NUM_BEATS);
     let playbackState = {
         playIntervalId: null,
         beatIndex: 0
