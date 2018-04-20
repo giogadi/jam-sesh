@@ -54,34 +54,35 @@ function openSocket() {
 const NUM_BEATS = 16;
 
 function updateStateFromServerMessage(
-    localState, remoteStates, event) {
+    uiElements, localState, remoteStates, event) {
     let update = JSON.parse(event.data);
     console.log("Received message " + JSON.stringify(update));
     if (update.update_type === "intro") {
         localState.id = update.client_id;
         remoteStates.length = 0;  // Clear the remoteStates
-        for (client_state of update.client_states) {
-            if (client_state.client_id === localState.id) {
-                if (client_state.sequence.length !=
-                    localState.beatBoxes.length) {
+        for (clientState of update.client_states) {
+            if (clientState.client_id === localState.id) {
+                if (clientState.sequence.length !=
+                    localState.sequence.length) {
                     throw "Mismatch in beat count!";
                 }
-                if (localState.beatBoxes.length != NUM_BEATS) {
+                if (localState.sequence.length != NUM_BEATS) {
                     throw "wrong # of beats!";
                 }
                 for (let i = 0; i < NUM_BEATS; i++) {
-                    localState.beatBoxes[i].checked =
-                        client_state.sequence[i];
+                    localState.sequence[i] =
+                        clientState.sequence[i];
                 }
-                localState.instrument = client_state.instrument;
+                localState.instrument = clientState.instrument;
             } else {
                 remoteStates.push({
-                    client_id: client_state.client_id,
-                    sequence: client_state.sequence,
-                    instrument: client_state.instrument
+                    client_id: clientState.client_id,
+                    sequence: clientState.sequence,
+                    instrument: clientState.instrument
                 });
             }
         }
+        updateUiFromState(localState, uiElements);
         return;
     }
 
@@ -124,39 +125,41 @@ function updateStateFromServerMessage(
     }
 }
 
-function getInstrumentNameFromLocalState(localState) {
+function getInstrumentNameFromUi(uiElements) {
     let instrument = undefined;
-    if (localState.kickRadio.checked) {
+    if (uiElements.kickRadio.checked) {
         instrument = 'kick';
-    } else if (localState.snareRadio.checked) {
+    } else if (uiElements.snareRadio.checked) {
         instrument = 'snare';
     }
     return instrument;
 }
 
-function onBeatBoxChange(event, socket, localState) {
+function onBeatBoxChange(event, socket, uiElements, localState) {
+    localState.sequence = uiElements.beatBoxes.map(b => b.checked);
+    localState.instrument = getInstrumentNameFromUi(uiElements);
     let localStateMsg = {
-        sequence: localState.beatBoxes.map(b => b.checked),
-        instrument: getInstrumentNameFromLocalState(localState)
+        sequence: localState.sequence,
+        instrument: localState.instrument,
     };
     socket.send(JSON.stringify(localStateMsg));
     console.log("Sent instrument " + localStateMsg.instrument);
     console.log("Sent sequence " + localStateMsg.sequence);
 }
 
-function setupServerEvents(localState, remoteStates) {
+function setupServerEvents(uiElements, localState, remoteStates) {
     openSocket().then(function(socket) {
         socket.onmessage =
             event => updateStateFromServerMessage(
-                localState, remoteStates, event);
-        for (b of localState.beatBoxes) {
+                uiElements, localState, remoteStates, event);
+        for (b of uiElements.beatBoxes) {
             b.onchange = e =>
-                onBeatBoxChange(e, socket, localState);
+                onBeatBoxChange(e, socket, uiElements, localState);
         }
-        localState.kickRadio.onchange =
-            e => onBeatBoxChange(e, socket, localState);
-        localState.snareRadio.onchange =
-            e => onBeatBoxChange(e, socket, localState);
+        uiElements.kickRadio.onchange =
+            e => onBeatBoxChange(e, socket, uiElements, localState);
+        uiElements.snareRadio.onchange =
+            e => onBeatBoxChange(e, socket, uiElements, localState);
     });
 }
 
@@ -177,12 +180,9 @@ function getInstrumentSound(audio, instrumentName) {
 }
 
 function perBeat(audio, playbackState, localState, remoteStates) {
-    localSequence = localState.beatBoxes.map(b => b.checked);
-    playBeat(playbackState.beatIndex, localSequence,
+    playBeat(playbackState.beatIndex, localState.sequence,
              audio.audioCtx,
-             getInstrumentSound(
-                 audio,
-                 getInstrumentNameFromLocalState(localState)));
+             getInstrumentSound(audio, localState.instrument));
     for (state of remoteStates) {
         playBeat(playbackState.beatIndex, state.sequence,
                  audio.audioCtx,
@@ -213,39 +213,55 @@ function togglePlayPause(
     }
 }
 
-function initUi(numBeats) {
-    let uiState = {
-        beatBoxes: [],
-        kickRadio: null,
-        snareRadio: null,
-        // TODO: Pls. This is terrible and doesn't belong here.
-        id: -1
-    }
-    for (i = 0; i < numBeats; i++) {
+function initUi(localState, uiElements) {
+    for (let i = 0; i < localState.sequence.length; i++) {
         let checkBox = document.createElement('input');
         checkBox.setAttribute('type', 'checkbox');
-        uiState.beatBoxes.push(document.body.appendChild(checkBox));
+        uiElements.beatBoxes.push(document.body.appendChild(checkBox));
     }
     let kickRadio = document.createElement('input');
     kickRadio.setAttribute('type', 'radio');
     kickRadio.setAttribute('name', 'instrument');
     kickRadio.setAttribute('value', 'kick');
-    kickRadio.checked = true;
-    uiState.kickRadio = document.body.appendChild(kickRadio);
+    uiElements.kickRadio = document.body.appendChild(kickRadio);
 
     let snareRadio = document.createElement('input');
     snareRadio.setAttribute('type', 'radio');
     snareRadio.setAttribute('name', 'instrument');
     snareRadio.setAttribute('value', 'snare');
-    uiState.snareRadio = document.body.appendChild(snareRadio);
+    uiElements.snareRadio = document.body.appendChild(snareRadio);
 
-    return uiState;
+    updateUiFromState(localState, uiElements);
+}
+
+function updateUiFromState(localState, uiElements) {
+    for (i = 0; i < localState.sequence.length; i++) {
+        uiElements.beatBoxes[i].checked = localState.sequence[i];
+    }
+    if (localState.instrument === "kick") {
+        uiElements.kickRadio.checked = true;
+    } else if (localState.instrument === "snare") {
+        uiElements.snareRadio.checked = true;
+    }
 }
 
 function init() {
-    let localState = initUi(NUM_BEATS);
+    let localState = {
+        sequence: [],
+        instrument: "kick",
+        id: -1
+    };
+    for (let i = 0; i < NUM_BEATS; i++) {
+        localState.sequence[i] = false;
+    }
+    let uiElements = {
+        beatBoxes: [],
+        kickRadio: null,
+        snareRadio: null,
+    };
+    initUi(localState, uiElements);
     let remoteStates = [];
-    setupServerEvents(localState, remoteStates, NUM_BEATS);
+    setupServerEvents(uiElements, localState, remoteStates);
     let playbackState = {
         playIntervalId: null,
         beatIndex: 0
