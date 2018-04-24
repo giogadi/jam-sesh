@@ -213,6 +213,32 @@ function togglePlayPause(
     }
 }
 
+function drawSequence(localState, uiElements) {
+    const canvasRect = uiElements.canvas.getBoundingClientRect();
+    const w = canvasRect.width;
+    const h = canvasRect.height;
+    // Clear the canvas
+    let ctx = uiElements.canvas.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+    // Find the biggest square that we can fit NUM_BEATS of
+    // horizontally.
+    const beatSize = Math.min(w / NUM_BEATS, h);
+    ctx.strokeStyle = 'rgb(0, 0, 0)';
+    // Draw our beatboxes, where inactive beats are grey and active
+    // beats are red.
+    for (let beatIx = 0; beatIx < NUM_BEATS; beatIx++) {
+        if (localState.sequence[beatIx]) {
+            ctx.fillStyle = 'rgb(200, 0, 0)';
+        } else {
+            ctx.fillStyle = 'rgb(100, 100, 100)';
+        }
+        ctx.fillRect(/*x=*/beatIx * beatSize, /*y=*/0,
+            /*w=*/beatSize, /*h=*/beatSize);
+        ctx.strokeRect(beatIx * beatSize, 0,
+                       beatSize, beatSize);
+    }
+}
+
 function initUi(localState, uiElements) {
     for (let i = 0; i < localState.sequence.length; i++) {
         let checkBox = document.createElement('input');
@@ -232,6 +258,18 @@ function initUi(localState, uiElements) {
     uiElements.snareRadio = document.body.appendChild(snareRadio);
 
     updateUiFromState(localState, uiElements);
+
+    document.body.appendChild(document.createElement('br'));
+
+    let canvas = document.createElement('canvas');
+    canvas.setAttribute('id', 'interface');
+    uiElements.canvas = document.body.appendChild(canvas);
+
+    function draw() {
+        drawSequence(localState, uiElements);
+        window.requestAnimationFrame(draw);
+    }
+    window.requestAnimationFrame(draw);
 }
 
 function updateUiFromState(localState, uiElements) {
@@ -258,6 +296,7 @@ function init() {
         beatBoxes: [],
         kickRadio: null,
         snareRadio: null,
+        canvas: null,
     };
     initUi(localState, uiElements);
     let remoteStates = [];
