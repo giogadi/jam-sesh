@@ -147,6 +147,31 @@ function onBeatBoxChange(event, socket, uiElements, localState) {
     console.log("Sent sequence " + localStateMsg.sequence);
 }
 
+function onCanvasClick(event, socket, uiElements, localState) {
+    const canvasRect = uiElements.canvas.getBoundingClientRect();
+    const w = canvasRect.width;
+    const h = canvasRect.height;
+    const beatSize = Math.min(Math.floor(w / NUM_BEATS), h);
+    // TODO: figure out how offsetLeft, canvasRect.left, etc. all fit
+    // together.
+    const x = event.clientX - uiElements.canvas.offsetLeft;
+    const y = event.clientY - uiElements.canvas.offsetTop;
+    console.log(x + " " + y + " " + beatSize);
+    if (y >= beatSize) {
+        // Clicked too far down
+        return;
+    }
+    const clickedBeatIx = Math.floor(x / beatSize);
+    if (clickedBeatIx >= NUM_BEATS) {
+        // Clicked too far to the right
+        return;
+    }
+    // TODO: This sucks this sucks this suuuuuuuuuuucks
+    uiElements.beatBoxes[clickedBeatIx].checked =
+        !uiElements.beatBoxes[clickedBeatIx].checked;
+    onBeatBoxChange(event, socket, uiElements, localState);
+}
+
 function setupServerEvents(uiElements, localState, remoteStates) {
     openSocket().then(function(socket) {
         socket.onmessage =
@@ -160,6 +185,8 @@ function setupServerEvents(uiElements, localState, remoteStates) {
             e => onBeatBoxChange(e, socket, uiElements, localState);
         uiElements.snareRadio.onchange =
             e => onBeatBoxChange(e, socket, uiElements, localState);
+        uiElements.canvas.onclick =
+            e => onCanvasClick(event, socket, uiElements, localState)
     });
 }
 
@@ -228,7 +255,7 @@ function drawSequence(localState, uiElements, playbackState) {
     ctx.clearRect(0, 0, w, h);
     // Find the biggest square that we can fit NUM_BEATS of
     // horizontally.
-    const beatSize = Math.min(w / NUM_BEATS, h);
+    const beatSize = Math.min(Math.floor(w / NUM_BEATS), h);
     ctx.strokeStyle = 'rgb(0, 0, 0)';
     // Draw our beatboxes, where inactive beats are grey and active
     // beats are red.
