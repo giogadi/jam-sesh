@@ -242,39 +242,64 @@ function togglePlayPause(
     }
 }
 
-function drawSequence(localState, uiElements, playbackState) {
+function drawSequence(
+    context2d, startX, startY, sequence, beatSize, playbackState) {
+    context2d.strokeStyle = 'rgb(0, 0, 0)';
+    // Draw our beatboxes, where inactive beats are grey and active
+    // beats are red.
+    for (let beatIx = 0; beatIx < NUM_BEATS; beatIx++) {
+        if (sequence[beatIx]) {
+            context2d.fillStyle = 'rgb(200, 0, 0)';
+        } else {
+            context2d.fillStyle = 'rgb(100, 100, 100)';
+        }
+        const minX = startX + beatIx * beatSize;
+        const minY = startY;
+        context2d.fillRect(
+            /*x=*/minX, /*y=*/minY, /*w=*/beatSize, /*h=*/beatSize);
+        context2d.strokeRect(minX, minY, beatSize, beatSize);
+        // TODO: don't use playIntervalId to represent play/pause.
+        if (playbackState.playIntervalId !== null &&
+            beatIx === playbackState.beatIndex) {
+            context2d.fillStyle = 'rgba(0, 255, 0, 0.5)';
+            context2d.fillRect(minX, minY, beatSize, beatSize);
+        }
+    }
+}
+
+function drawInterface(localState, remoteStates, uiElements, playbackState) {
     const canvasRect = uiElements.canvas.getBoundingClientRect();
     const w = canvasRect.width;
     const h = canvasRect.height;
     // Clear the canvas
     let ctx = uiElements.canvas.getContext('2d');
     ctx.clearRect(0, 0, w, h);
-    // Find the biggest square that we can fit NUM_BEATS of
-    // horizontally.
-    const beatSize = Math.min(Math.floor(w / NUM_BEATS), h);
-    ctx.strokeStyle = 'rgb(0, 0, 0)';
-    // Draw our beatboxes, where inactive beats are grey and active
-    // beats are red.
-    for (let beatIx = 0; beatIx < NUM_BEATS; beatIx++) {
-        if (localState.sequence[beatIx]) {
-            ctx.fillStyle = 'rgb(200, 0, 0)';
-        } else {
-            ctx.fillStyle = 'rgb(100, 100, 100)';
-        }
-        ctx.fillRect(/*x=*/beatIx * beatSize, /*y=*/0,
-            /*w=*/beatSize, /*h=*/beatSize);
-        ctx.strokeRect(beatIx * beatSize, 0,
-                       beatSize, beatSize);
-        // TODO: don't use playIntervalId to represent play/pause.
-        if (playbackState.playIntervalId !== null &&
-            beatIx === playbackState.beatIndex) {
-            ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
-            ctx.fillRect(beatIx * beatSize, 0, beatSize, beatSize);
-        }
+    // We need to find an appropriate size for the component beat
+    // boxes of the local client sequencer and the remote clients'
+    // sequencers. We want the local sequencer to be 2x as large as
+    // the remote states' sequencers. We also need to account for
+    // vertical between sequencers, and the height of the drawing
+    // canvas.
+    //
+    // We want: localBeatSize + numRemotes*(spacing+0.5*localBeatSize)
+    // <= height.
+    const spacing = 30;
+    let localBeatSize = Math.floor((h - remoteStates.length * spacing) /
+                                   (1 + 0.5*remoteStates.length));
+    localBeatSize = Math.min(localBeatSize, Math.floor(w / NUM_BEATS));
+    drawSequence(ctx, /*startX=*/0, /*startY=*/0, localState.sequence,
+                 localBeatSize, playbackState);
+    const remoteBeatSize = Math.floor(localBeatSize / 2);
+    for (let remoteIx = 0; remoteIx < remoteStates.length; remoteIx++) {
+        const startX = 0;
+        const startY = localBeatSize + spacing +
+              remoteIx * (spacing + remoteBeatSize);
+        drawSequence(ctx, startX, startY, remoteStates[remoteIx].sequence,
+                     remoteBeatSize, playbackState);
     }
 }
 
-function initUi(localState, uiElements, playbackState) {
+function initUi(localState, remoteStates, uiElements, playbackState) {
     let kickRadio = document.createElement('input');
     kickRadio.setAttribute('type', 'radio');
     kickRadio.setAttribute('name', 'instrument');
@@ -293,10 +318,11 @@ function initUi(localState, uiElements, playbackState) {
 
     let canvas = document.createElement('canvas');
     canvas.setAttribute('id', 'interface');
+    canvas.setAttribute('height', '600');
     uiElements.canvas = document.body.appendChild(canvas);
 
     function draw() {
-        drawSequence(localState, uiElements, playbackState);
+        drawInterface(localState, remoteStates, uiElements, playbackState);
         window.requestAnimationFrame(draw);
     }
     window.requestAnimationFrame(draw);
@@ -328,8 +354,8 @@ function init() {
         snareRadio: null,
         canvas: null,
     };
-    initUi(localState, uiElements, playbackState);
     let remoteStates = [];
+    initUi(localState, remoteStates, uiElements, playbackState);
     setupServerEvents(uiElements, localState, remoteStates);
     initSounds().then(function(audio) {
         function keyCallback(event) {
