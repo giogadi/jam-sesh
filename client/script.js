@@ -135,9 +135,7 @@ function getInstrumentNameFromUi(uiElements) {
     return instrument;
 }
 
-function onBeatBoxChange(event, socket, uiElements, localState) {
-    localState.sequence = uiElements.beatBoxes.map(b => b.checked);
-    localState.instrument = getInstrumentNameFromUi(uiElements);
+function sendStateToSocket(socket, localState) {
     let localStateMsg = {
         sequence: localState.sequence,
         instrument: localState.instrument,
@@ -166,25 +164,23 @@ function onCanvasClick(event, socket, uiElements, localState) {
         // Clicked too far to the right
         return;
     }
-    // TODO: This sucks this sucks this suuuuuuuuuuucks
-    uiElements.beatBoxes[clickedBeatIx].checked =
-        !uiElements.beatBoxes[clickedBeatIx].checked;
-    onBeatBoxChange(event, socket, uiElements, localState);
+    localState.sequence[clickedBeatIx] = !localState.sequence[clickedBeatIx];
+    sendStateToSocket(socket, localState);
 }
 
+// TODO: Currently, state update and updates out to server are
+// coupled; maybe separate them?
 function setupServerEvents(uiElements, localState, remoteStates) {
     openSocket().then(function(socket) {
         socket.onmessage =
             event => updateStateFromServerMessage(
                 uiElements, localState, remoteStates, event);
-        for (b of uiElements.beatBoxes) {
-            b.onchange = e =>
-                onBeatBoxChange(e, socket, uiElements, localState);
+        let onRadioChange = function(e) {
+            localState.instrument = getInstrumentNameFromUi(uiElements);
+            sendStateToSocket(socket, localState);
         }
-        uiElements.kickRadio.onchange =
-            e => onBeatBoxChange(e, socket, uiElements, localState);
-        uiElements.snareRadio.onchange =
-            e => onBeatBoxChange(e, socket, uiElements, localState);
+        uiElements.kickRadio.onchange = onRadioChange;
+        uiElements.snareRadio.onchange = onRadioChange;
         uiElements.canvas.onclick =
             e => onCanvasClick(event, socket, uiElements, localState)
     });
@@ -279,11 +275,6 @@ function drawSequence(localState, uiElements, playbackState) {
 }
 
 function initUi(localState, uiElements, playbackState) {
-    for (let i = 0; i < localState.sequence.length; i++) {
-        let checkBox = document.createElement('input');
-        checkBox.setAttribute('type', 'checkbox');
-        uiElements.beatBoxes.push(document.body.appendChild(checkBox));
-    }
     let kickRadio = document.createElement('input');
     kickRadio.setAttribute('type', 'radio');
     kickRadio.setAttribute('name', 'instrument');
@@ -312,9 +303,6 @@ function initUi(localState, uiElements, playbackState) {
 }
 
 function updateUiFromState(localState, uiElements) {
-    for (i = 0; i < localState.sequence.length; i++) {
-        uiElements.beatBoxes[i].checked = localState.sequence[i];
-    }
     if (localState.instrument === "kick") {
         uiElements.kickRadio.checked = true;
     } else if (localState.instrument === "snare") {
@@ -336,7 +324,6 @@ function init() {
         localState.sequence[i] = false;
     }
     let uiElements = {
-        beatBoxes: [],
         kickRadio: null,
         snareRadio: null,
         canvas: null,
