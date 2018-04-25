@@ -188,7 +188,6 @@ function perBeat(audio, playbackState, localState, remoteStates) {
                  audio.audioCtx,
                  getInstrumentSound(audio, state.instrument));
     }
-    playbackState.beatIndex = (playbackState.beatIndex + 1) % NUM_BEATS;
 }
 
 function togglePlayPause(
@@ -203,6 +202,13 @@ function togglePlayPause(
         perBeat(audio, playbackState, localState, remoteStates);
         playbackState.playIntervalId =
             window.setInterval(function() {
+                // We have to increment the beatIndex right at the
+                // beginning of the "iteration" because other parts
+                // (like UI) use beatIndex, and so beatIndex needs to
+                // correspond to the "actual" beatIndex for the entire
+                // iteration.
+                playbackState.beatIndex =
+                    (playbackState.beatIndex + 1) % NUM_BEATS;
                 perBeat(audio, playbackState, localState, remoteStates);
             },
                                /*delay=*/ticksPerBeat);
@@ -213,7 +219,7 @@ function togglePlayPause(
     }
 }
 
-function drawSequence(localState, uiElements) {
+function drawSequence(localState, uiElements, playbackState) {
     const canvasRect = uiElements.canvas.getBoundingClientRect();
     const w = canvasRect.width;
     const h = canvasRect.height;
@@ -236,10 +242,16 @@ function drawSequence(localState, uiElements) {
             /*w=*/beatSize, /*h=*/beatSize);
         ctx.strokeRect(beatIx * beatSize, 0,
                        beatSize, beatSize);
+        // TODO: don't use playIntervalId to represent play/pause.
+        if (playbackState.playIntervalId !== null &&
+            beatIx === playbackState.beatIndex) {
+            ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+            ctx.fillRect(beatIx * beatSize, 0, beatSize, beatSize);
+        }
     }
 }
 
-function initUi(localState, uiElements) {
+function initUi(localState, uiElements, playbackState) {
     for (let i = 0; i < localState.sequence.length; i++) {
         let checkBox = document.createElement('input');
         checkBox.setAttribute('type', 'checkbox');
@@ -266,7 +278,7 @@ function initUi(localState, uiElements) {
     uiElements.canvas = document.body.appendChild(canvas);
 
     function draw() {
-        drawSequence(localState, uiElements);
+        drawSequence(localState, uiElements, playbackState);
         window.requestAnimationFrame(draw);
     }
     window.requestAnimationFrame(draw);
@@ -289,6 +301,10 @@ function init() {
         instrument: "kick",
         id: -1
     };
+    let playbackState = {
+        playIntervalId: null,
+        beatIndex: 0
+    };
     for (let i = 0; i < NUM_BEATS; i++) {
         localState.sequence[i] = false;
     }
@@ -298,13 +314,9 @@ function init() {
         snareRadio: null,
         canvas: null,
     };
-    initUi(localState, uiElements);
+    initUi(localState, uiElements, playbackState);
     let remoteStates = [];
     setupServerEvents(uiElements, localState, remoteStates);
-    let playbackState = {
-        playIntervalId: null,
-        beatIndex: 0
-    };
     initSounds().then(function(audio) {
         function keyCallback(event) {
             if (event.key === " " ||
