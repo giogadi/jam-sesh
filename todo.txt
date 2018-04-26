@@ -3,6 +3,5 @@
 * Improve UI
   - Add a play/pause button (instead of only using space bar)
   - Label stuff, lol
-  - Visually display remote clients' states (non-editable obv)
 * Use binary comms between clients and server
 * Enable multiple "rooms".

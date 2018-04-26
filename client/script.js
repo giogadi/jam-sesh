@@ -145,21 +145,27 @@ function sendStateToSocket(socket, localState) {
     console.log("Sent sequence " + localStateMsg.sequence);
 }
 
-function onCanvasClick(event, socket, uiElements, localState) {
+function onCanvasClick(event, socket, uiElements, localState, remoteStates) {
     const canvasRect = uiElements.canvas.getBoundingClientRect();
-    const w = canvasRect.width;
-    const h = canvasRect.height;
-    const beatSize = Math.min(Math.floor(w / NUM_BEATS), h);
+    const seqDims = getSequencerDimensions(remoteStates, canvasRect);
     // TODO: figure out how offsetLeft, canvasRect.left, etc. all fit
     // together.
-    const x = event.clientX - uiElements.canvas.offsetLeft;
-    const y = event.clientY - uiElements.canvas.offsetTop;
-    console.log(x + " " + y + " " + beatSize);
-    if (y >= beatSize) {
+    const x = (event.clientX - uiElements.canvas.offsetLeft) - seqDims.startX;
+    const y = (event.clientY - uiElements.canvas.offsetTop) - seqDims.startY;
+    console.log(x + " " + y + " " + seqDims.localBeatSize);
+    if (x < 0) {
+        // Clicked too far to the left
+        return;
+    }
+    if (y < 0) {
+        // Clicked too far up
+        return;
+    }
+    if (y >= seqDims.localBeatSize) {
         // Clicked too far down
         return;
     }
-    const clickedBeatIx = Math.floor(x / beatSize);
+    const clickedBeatIx = Math.floor(x / seqDims.localBeatSize);
     if (clickedBeatIx >= NUM_BEATS) {
         // Clicked too far to the right
         return;
@@ -182,7 +188,8 @@ function setupServerEvents(uiElements, localState, remoteStates) {
         uiElements.kickRadio.onchange = onRadioChange;
         uiElements.snareRadio.onchange = onRadioChange;
         uiElements.canvas.onclick =
-            e => onCanvasClick(event, socket, uiElements, localState)
+            e => onCanvasClick(
+                event, socket, uiElements, localState, remoteStates)
     });
 }
 
@@ -267,13 +274,12 @@ function drawSequence(
     }
 }
 
-function drawInterface(localState, remoteStates, uiElements, playbackState) {
-    const canvasRect = uiElements.canvas.getBoundingClientRect();
+function getSequencerDimensions(remoteStates, canvasRect) {
     const w = canvasRect.width;
     const h = canvasRect.height;
-    // Clear the canvas
-    let ctx = uiElements.canvas.getContext('2d');
-    ctx.clearRect(0, 0, w, h);
+    const spacing = 30;
+    const startX = 0;
+    const startY = 0;
     // We need to find an appropriate size for the component beat
     // boxes of the local client sequencer and the remote clients'
     // sequencers. We want the local sequencer to be 2x as large as
@@ -281,21 +287,42 @@ function drawInterface(localState, remoteStates, uiElements, playbackState) {
     // vertical between sequencers, and the height of the drawing
     // canvas.
     //
-    // We want: localBeatSize + numRemotes*(spacing+0.5*localBeatSize)
+    // We want: startY + localBeatSize + numRemotes*(spacing+0.5*localBeatSize)
     // <= height.
-    const spacing = 30;
-    let localBeatSize = Math.floor((h - remoteStates.length * spacing) /
-                                   (1 + 0.5*remoteStates.length));
-    localBeatSize = Math.min(localBeatSize, Math.floor(w / NUM_BEATS));
-    drawSequence(ctx, /*startX=*/0, /*startY=*/0, localState.sequence,
-                 localBeatSize, playbackState);
+    let localBeatSize = Math.floor(
+        ((h - startY) - remoteStates.length * spacing) /
+            (1 + 0.5*remoteStates.length));
+    // Want startX + localBeatSize * NUM_BEATS <= w
+    localBeatSize = Math.min(localBeatSize,
+                             Math.floor((w - startX) / NUM_BEATS));
     const remoteBeatSize = Math.floor(localBeatSize / 2);
+    return {
+        localBeatSize: localBeatSize,
+        remoteBeatSize: remoteBeatSize,
+        startX: startX,
+        startY: startY,
+        spacing: spacing
+    };
+}
+
+function drawInterface(localState, remoteStates, uiElements, playbackState) {
+    const canvasRect = uiElements.canvas.getBoundingClientRect();
+    const seqDims =
+          getSequencerDimensions(remoteStates, canvasRect);
+    // Clear the canvas
+    let ctx = uiElements.canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvasRect.width, canvasRect.height);
+    // Draw local sequence
+    drawSequence(ctx, seqDims.startX, seqDims.startY, localState.sequence,
+                 seqDims.localBeatSize, playbackState);
+    // Draw remote sequences
     for (let remoteIx = 0; remoteIx < remoteStates.length; remoteIx++) {
-        const startX = 0;
-        const startY = localBeatSize + spacing +
-              remoteIx * (spacing + remoteBeatSize);
+        const startX = seqDims.startX;
+        const startY = seqDims.startY + seqDims.localBeatSize +
+              seqDims.spacing +
+              remoteIx * (seqDims.spacing + seqDims.remoteBeatSize);
         drawSequence(ctx, startX, startY, remoteStates[remoteIx].sequence,
-                     remoteBeatSize, playbackState);
+                     seqDims.remoteBeatSize, playbackState);
     }
 }
 
