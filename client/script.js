@@ -23,11 +23,23 @@ function initSounds() {
         return Promise.all(loadedSounds.map(function(loadedSound) {
             return audioCtx.decodeAudioData(loadedSound);
         }));
-    }).then(function(decodedSounds) {;
+    }).then(function(decodedSounds) {
+        let osc = audioCtx.createOscillator();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+        gainNode = audioCtx.createGain();
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc.start();
         return {
             audioCtx: audioCtx,
             kickSound: decodedSounds[0],
-            snareSound: decodedSounds[1]
+            snareSound: decodedSounds[1],
+            synth: {
+                osc: osc,
+                gain: gainNode
+            }
         }
     });
 }
@@ -131,6 +143,8 @@ function getInstrumentNameFromUi(uiElements) {
         instrument = 'kick';
     } else if (uiElements.snareRadio.checked) {
         instrument = 'snare';
+    } else if (uiElements.synthRadio.checked) {
+        instrument = 'synth';
     }
     return instrument;
 }
@@ -187,16 +201,11 @@ function setupServerEvents(uiElements, localState, remoteStates) {
         }
         uiElements.kickRadio.onchange = onRadioChange;
         uiElements.snareRadio.onchange = onRadioChange;
+        uiElements.synthRadio.onchange = onRadioChange;
         uiElements.canvas.onclick =
             e => onCanvasClick(
                 event, socket, uiElements, localState, remoteStates)
     });
-}
-
-function playBeat(beatIndex, sequence, audioCtx, sound) {
-    if (sequence[beatIndex]) {
-        playSoundFromBuffer(audioCtx, sound);
-    }
 }
 
 function getInstrumentSound(audio, instrumentName) {
@@ -209,14 +218,27 @@ function getInstrumentSound(audio, instrumentName) {
     return sound;
 }
 
+function playBeat(beatIndex, sequence, audio, instrumentName) {
+    if (sequence[beatIndex]) {
+        if (instrumentName === 'synth') {
+            audio.synth.gain.gain.linearRampToValueAtTime(
+                1, audio.audioCtx.currentTime + 0.01);
+            audio.synth.gain.gain.linearRampToValueAtTime(
+                0, audio.audioCtx.currentTime + 0.1);
+        } else {
+            playSoundFromBuffer(
+                audio.audioCtx, getInstrumentSound(audio, instrumentName));
+        }
+    }
+}
+
 function perBeat(audio, playbackState, localState, remoteStates) {
     playBeat(playbackState.beatIndex, localState.sequence,
-             audio.audioCtx,
-             getInstrumentSound(audio, localState.instrument));
+             audio, localState.instrument);
+    // TODO: Might need multiple synths for multiple remotes.
     for (state of remoteStates) {
         playBeat(playbackState.beatIndex, state.sequence,
-                 audio.audioCtx,
-                 getInstrumentSound(audio, state.instrument));
+                 audio, state.instrument);
     }
 }
 
@@ -339,6 +361,12 @@ function initUi(localState, remoteStates, uiElements, playbackState) {
     snareRadio.setAttribute('value', 'snare');
     uiElements.snareRadio = document.body.appendChild(snareRadio);
 
+    let synthRadio = document.createElement('input');
+    synthRadio.setAttribute('type', 'radio');
+    synthRadio.setAttribute('name', 'instrument');
+    synthRadio.setAttribute('value', 'synth');
+    uiElements.synthRadio = document.body.appendChild(synthRadio);
+
     updateUiFromState(localState, uiElements);
 
     document.body.appendChild(document.createElement('br'));
@@ -360,6 +388,8 @@ function updateUiFromState(localState, uiElements) {
         uiElements.kickRadio.checked = true;
     } else if (localState.instrument === "snare") {
         uiElements.snareRadio.checked = true;
+    } else if (localState.instrument === "synth") {
+        uiElements.synthRadio.checked = true;
     }
 }
 
