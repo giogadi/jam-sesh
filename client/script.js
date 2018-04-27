@@ -13,6 +13,48 @@ function getSoundData(filename) {
     });
 }
 
+const BASE_FREQS = [
+    55.0000, // A
+    58.2705, // A#
+    61.7354, // B
+    65.4064, // C
+    69.2957, // C#
+    73.4162, // D
+    77.7817, // D#
+    82.4069, // E
+    87.3071, // F
+    92.4986, // F#
+    97.9989, // G
+    103.826, // G#
+];
+
+// Maximum note index is arbitrarily 70. Who cares.
+const MAX_NOTE_INDEX = 70;
+
+function noteFrequency(note_ix) {
+    if (note_ix > MAX_NOTE_INDEX || note_ix < 0) {
+        throw "invalid note index (" + note_ix + ")";
+    }
+    const base_freq_ix = note_ix % BASE_FREQS.length;
+    const num_octaves_above = Math.floor(note_ix / BASE_FREQS.length);
+    return BASE_FREQS[base_freq_ix] * (1 << num_octaves_above);
+}
+
+function initSynth(audioCtx) {
+    let osc = audioCtx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+    gainNode = audioCtx.createGain();
+    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    osc.start();
+    return {
+        osc: osc,
+        gain: gainNode
+    };
+}
+
 function initSounds() {
     let soundNames = ['kick', 'snare'];
     let sounds = soundNames.map(function(soundName) {
@@ -24,22 +66,11 @@ function initSounds() {
             return audioCtx.decodeAudioData(loadedSound);
         }));
     }).then(function(decodedSounds) {
-        let osc = audioCtx.createOscillator();
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
-        gainNode = audioCtx.createGain();
-        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-        osc.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-        osc.start();
         return {
             audioCtx: audioCtx,
             kickSound: decodedSounds[0],
             snareSound: decodedSounds[1],
-            synth: {
-                osc: osc,
-                gain: gainNode
-            }
+            synth: initSynth(audioCtx)
         }
     });
 }
@@ -221,6 +252,10 @@ function getInstrumentSound(audio, instrumentName) {
 function playBeat(beatIndex, sequence, audio, instrumentName) {
     if (sequence[beatIndex]) {
         if (instrumentName === 'synth') {
+            const noteIx =
+                  Math.floor(Math.random() * (MAX_NOTE_INDEX + 1));
+            audio.synth.osc.frequency.setValueAtTime(
+                noteFrequency(noteIx), audio.audioCtx.currentTime);
             audio.synth.gain.gain.linearRampToValueAtTime(
                 1, audio.audioCtx.currentTime + 0.01);
             audio.synth.gain.gain.linearRampToValueAtTime(
