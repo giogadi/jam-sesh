@@ -15,16 +15,18 @@ use websocket::OwnedMessage;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ClientId(usize);
 
+type NoteIndex = i32;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct ClientState {
-    sequence: Vec<bool>,
+    sequence: Vec<NoteIndex>,  // TODO: maybe u8 or something?
     instrument: String,
 }
 impl ClientState {
     fn new(num_beats: u32, instrument: String) -> ClientState {
-        let mut sequence = vec![false; num_beats as usize];
+        let mut sequence = vec![-1; num_beats as usize];
         for (ix, beat) in sequence.iter_mut().enumerate() {
-            *beat = ix % 4 == 0;
+            *beat = if ix % 4 == 0 { 0 } else { -1 }
         }
         ClientState {
             sequence: sequence,
@@ -147,7 +149,7 @@ fn send_intro_message_to_client(
     #[derive(Serialize)]
     struct ClientIdAndStateMessage {
         client_id: usize,
-        sequence: Vec<bool>,
+        sequence: Vec<NoteIndex>,
         instrument: String,
     }
 

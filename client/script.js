@@ -215,7 +215,11 @@ function onCanvasClick(event, socket, uiElements, localState, remoteStates) {
         // Clicked too far to the right
         return;
     }
-    localState.sequence[clickedBeatIx] = !localState.sequence[clickedBeatIx];
+    if (localState.sequence[clickedBeatIx] < 0) {
+        localState.sequence[clickedBeatIx] = 0;
+    } else {
+        localState.sequence[clickedBeatIx] = -1;
+    }
     sendStateToSocket(socket, localState);
 }
 
@@ -250,10 +254,11 @@ function getInstrumentSound(audio, instrumentName) {
 }
 
 function playBeat(beatIndex, sequence, audio, instrumentName) {
-    if (sequence[beatIndex]) {
+    if (sequence[beatIndex] >= 0) {
         if (instrumentName === 'synth') {
-            const noteIx =
-                  Math.floor(Math.random() * (MAX_NOTE_INDEX + 1));
+            // const noteIx =
+            //       Math.floor(Math.random() * (MAX_NOTE_INDEX + 1));
+            const noteIx = sequence[beatIndex];
             audio.synth.osc.frequency.setValueAtTime(
                 noteFrequency(noteIx), audio.audioCtx.currentTime);
             audio.synth.gain.gain.linearRampToValueAtTime(
@@ -312,7 +317,7 @@ function drawSequence(
     // Draw our beatboxes, where inactive beats are grey and active
     // beats are red.
     for (let beatIx = 0; beatIx < NUM_BEATS; beatIx++) {
-        if (sequence[beatIx]) {
+        if (sequence[beatIx] >= 0) {
             context2d.fillStyle = 'rgb(200, 0, 0)';
         } else {
             context2d.fillStyle = 'rgb(100, 100, 100)';
@@ -334,9 +339,9 @@ function drawSequence(
 function getSequencerDimensions(remoteStates, canvasRect) {
     const w = canvasRect.width;
     const h = canvasRect.height;
-    const spacing = 30;
     const startX = 0;
     const startY = 0;
+    const spacing = 30;
     // We need to find an appropriate size for the component beat
     // boxes of the local client sequencer and the remote clients'
     // sequencers. We want the local sequencer to be 2x as large as
@@ -369,6 +374,8 @@ function drawInterface(localState, remoteStates, uiElements, playbackState) {
     // Clear the canvas
     let ctx = uiElements.canvas.getContext('2d');
     ctx.clearRect(0, 0, canvasRect.width, canvasRect.height);
+    ctx.fillStyle = 'rgb(200, 200, 200)';
+    ctx.fillRect(0, 0, canvasRect.width, canvasRect.height);
     // Draw local sequence
     drawSequence(ctx, seqDims.startX, seqDims.startY, localState.sequence,
                  seqDims.localBeatSize, playbackState);
@@ -439,7 +446,7 @@ function init() {
         beatIndex: 0
     };
     for (let i = 0; i < NUM_BEATS; i++) {
-        localState.sequence[i] = false;
+        localState.sequence[i] = -1;
     }
     let uiElements = {
         kickRadio: null,
