@@ -1,7 +1,7 @@
 function getSoundData(filename) {
     return new Promise(function(resolve, reject) {
         let request = new XMLHttpRequest();
-        request.open('GET', 'http://localhost:8000/' + filename, true);
+        request.open('GET', 'http://localhost:2794/' + filename, true);
         request.responseType = 'arraybuffer';
         request.onload = function() {
             resolve(request.response);
@@ -84,7 +84,7 @@ function playSoundFromBuffer(audioCtx, buffer) {
 
 function openSocket() {
     return new Promise(function(resolve, reject) {
-        let socket = new WebSocket("ws://localhost:2794", "giogadi");
+        let socket = new WebSocket("ws://localhost:2795", "giogadi");
         socket.onopen = function(e) {
             resolve(socket);
         }

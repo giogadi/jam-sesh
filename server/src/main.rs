@@ -219,7 +219,7 @@ struct ClientInfo {
 
 fn main() {
     const NUM_BEATS: u32 = 16;
-    let server = Server::bind("0.0.0.0:2794").unwrap();
+    let server = Server::bind("0.0.0.0:2795").unwrap();
     let (to_main, from_threads) = mpsc::channel();
     let connections: Arc<Mutex<Vec<ClientInfo>>> =
         Arc::new(Mutex::new(Vec::new()));
