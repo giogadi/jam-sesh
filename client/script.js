@@ -42,7 +42,7 @@ function noteFrequency(note_ix) {
 
 function initSynth(audioCtx) {
     let osc = audioCtx.createOscillator();
-    osc.type = 'square';
+    osc.type = 'triangle';
     osc.frequency.setValueAtTime(440, audioCtx.currentTime);
     gainNode = audioCtx.createGain();
     gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
@@ -206,19 +206,23 @@ function onCanvasClick(event, socket, uiElements, localState, remoteStates) {
         // Clicked too far up
         return;
     }
-    if (y >= seqDims.localBeatSize) {
-        // Clicked too far down
-        return;
-    }
     const clickedBeatIx = Math.floor(x / seqDims.localBeatSize);
     if (clickedBeatIx >= NUM_BEATS) {
         // Clicked too far to the right
         return;
     }
-    if (localState.sequence[clickedBeatIx] < 0) {
-        localState.sequence[clickedBeatIx] = 0;
-    } else {
+    const clickedNoteRow = Math.floor(y / seqDims.localBeatSize);
+    if (clickedNoteRow >= NUM_NOTES) {
+        // Clicked too far down
+        return;
+    }
+    const clickedNoteIx = (NUM_NOTES - 1) - clickedNoteRow;
+    // If user clicked on the currently active note, then deactivate
+    // that beat. Otherwise, change this beat to the clicked note.
+    if (localState.sequence[clickedBeatIx] === clickedNoteIx) {
         localState.sequence[clickedBeatIx] = -1;
+    } else {
+        localState.sequence[clickedBeatIx] = clickedNoteIx;
     }
     sendStateToSocket(socket, localState);
 }
@@ -256,9 +260,7 @@ function getInstrumentSound(audio, instrumentName) {
 function playBeat(beatIndex, sequence, audio, instrumentName) {
     if (sequence[beatIndex] >= 0) {
         if (instrumentName === 'synth') {
-            // const noteIx =
-            //       Math.floor(Math.random() * (MAX_NOTE_INDEX + 1));
-            const noteIx = sequence[beatIndex];
+            const noteIx = sequence[beatIndex] + 24;
             audio.synth.osc.frequency.setValueAtTime(
                 noteFrequency(noteIx), audio.audioCtx.currentTime);
             audio.synth.gain.gain.linearRampToValueAtTime(
@@ -311,28 +313,56 @@ function togglePlayPause(
     }
 }
 
+const NUM_NOTES = 13;
+
 function drawSequence(
     context2d, startX, startY, sequence, beatSize, playbackState) {
-    context2d.strokeStyle = 'rgb(0, 0, 0)';
     // Draw our beatboxes, where inactive beats are grey and active
     // beats are red.
+    //
+    // First draw the gray inactive beats as one big rectangle.
+    context2d.fillStyle = 'rgb(100, 100, 100)';
+    context2d.fillRect(startX, startY,
+                       beatSize * NUM_BEATS, beatSize * NUM_NOTES);
+    // Now draw the active beats on the appropriate note row.
+    context2d.fillStyle = 'rgb(200, 0, 0)';
     for (let beatIx = 0; beatIx < NUM_BEATS; beatIx++) {
-        if (sequence[beatIx] >= 0) {
-            context2d.fillStyle = 'rgb(200, 0, 0)';
-        } else {
-            context2d.fillStyle = 'rgb(100, 100, 100)';
+        if (sequence[beatIx] < 0) {
+            continue;
         }
-        const minX = startX + beatIx * beatSize;
-        const minY = startY;
+        const noteIx = sequence[beatIx];
+        const noteRow = (NUM_NOTES - 1) - noteIx;
         context2d.fillRect(
-            /*x=*/minX, /*y=*/minY, /*w=*/beatSize, /*h=*/beatSize);
-        context2d.strokeRect(minX, minY, beatSize, beatSize);
-        // TODO: don't use playIntervalId to represent play/pause.
-        if (playbackState.playIntervalId !== null &&
-            beatIx === playbackState.beatIndex) {
-            context2d.fillStyle = 'rgba(0, 255, 0, 0.5)';
-            context2d.fillRect(minX, minY, beatSize, beatSize);
-        }
+            startX + beatIx * beatSize,
+            startY + noteRow * beatSize,
+            beatSize, beatSize);
+    }
+    // If playback is on, we highlight the current beat in green.
+    //
+    // TODO: don't use playIntervalId to represent play/pause.
+    if (playbackState.playIntervalId !== null) {
+        context2d.fillStyle = 'rgba(0, 255, 0, 0.5)';
+        const beatIx = playbackState.beatIndex;
+        context2d.fillRect(
+            startX + beatIx * beatSize,
+            startY,
+            beatSize, NUM_NOTES * beatSize);
+    }
+    // Finally, draw a grid to divide up the beats and notes.
+    context2d.strokeStyle = 'rgb(0, 0, 0)';
+    for (let lineIx = 0; lineIx <= NUM_BEATS; lineIx++) {
+        context2d.beginPath();
+        const x = startX + lineIx * beatSize;
+        context2d.moveTo(x, startY);
+        context2d.lineTo(x, startY + NUM_NOTES * beatSize);
+        context2d.stroke();
+    }
+    for (let lineIx = 0; lineIx <= NUM_NOTES; lineIx++) {
+        context2d.beginPath();
+        const y = startY + lineIx * beatSize;
+        context2d.moveTo(startX, y);
+        context2d.lineTo(startX + NUM_BEATS * beatSize, y);
+        context2d.stroke();
     }
 }
 
@@ -342,32 +372,22 @@ function getSequencerDimensions(remoteStates, canvasRect) {
     const startX = 0;
     const startY = 0;
     const spacing = 30;
-    // We need to find an appropriate size for the component beat
-    // boxes of the local client sequencer and the remote clients'
-    // sequencers. We want the local sequencer to be 2x as large as
-    // the remote states' sequencers. We also need to account for
-    // vertical between sequencers, and the height of the drawing
-    // canvas.
-    //
-    // We want: startY + localBeatSize + numRemotes*(spacing+0.5*localBeatSize)
-    // <= height.
-    let localBeatSize = Math.floor(
-        ((h - startY) - remoteStates.length * spacing) /
-            (1 + 0.5*remoteStates.length));
-    // Want startX + localBeatSize * NUM_BEATS <= w
+    // Want startX + localBeatSize * NUM_BEATS <= w &&
+    // startY + numNotes*localBeatSize <= h.
+    let localBeatSize = Math.floor((w - startX) / NUM_BEATS);
     localBeatSize = Math.min(localBeatSize,
-                             Math.floor((w - startX) / NUM_BEATS));
-    const remoteBeatSize = Math.floor(localBeatSize / 2);
+                             Math.floor((h - startY) / NUM_NOTES));
     return {
         localBeatSize: localBeatSize,
-        remoteBeatSize: remoteBeatSize,
+        remoteBeatSize: 0,
         startX: startX,
         startY: startY,
-        spacing: spacing
+        spacing: spacing,
     };
 }
 
 function drawInterface(localState, remoteStates, uiElements, playbackState) {
+    // TODO: draw single-line sequence for the drums
     const canvasRect = uiElements.canvas.getBoundingClientRect();
     const seqDims =
           getSequencerDimensions(remoteStates, canvasRect);
@@ -379,15 +399,6 @@ function drawInterface(localState, remoteStates, uiElements, playbackState) {
     // Draw local sequence
     drawSequence(ctx, seqDims.startX, seqDims.startY, localState.sequence,
                  seqDims.localBeatSize, playbackState);
-    // Draw remote sequences
-    for (let remoteIx = 0; remoteIx < remoteStates.length; remoteIx++) {
-        const startX = seqDims.startX;
-        const startY = seqDims.startY + seqDims.localBeatSize +
-              seqDims.spacing +
-              remoteIx * (seqDims.spacing + seqDims.remoteBeatSize);
-        drawSequence(ctx, startX, startY, remoteStates[remoteIx].sequence,
-                     seqDims.remoteBeatSize, playbackState);
-    }
 }
 
 function initUi(localState, remoteStates, uiElements, playbackState) {
