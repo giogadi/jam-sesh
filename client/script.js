@@ -168,18 +168,6 @@ function updateStateFromServerMessage(
     }
 }
 
-function getInstrumentNameFromUi(uiElements) {
-    let instrument = undefined;
-    if (uiElements.kickRadio.checked) {
-        instrument = 'kick';
-    } else if (uiElements.snareRadio.checked) {
-        instrument = 'snare';
-    } else if (uiElements.synthRadio.checked) {
-        instrument = 'synth';
-    }
-    return instrument;
-}
-
 function sendStateToSocket(socket, localState) {
     let localStateMsg = {
         sequence: localState.sequence,
@@ -234,13 +222,11 @@ function setupServerEvents(uiElements, localState, remoteStates) {
         socket.onmessage =
             event => updateStateFromServerMessage(
                 uiElements, localState, remoteStates, event);
-        let onRadioChange = function(e) {
-            localState.instrument = getInstrumentNameFromUi(uiElements);
+        let onInstrumentChange = function(e) {
+            localState.instrument = e.target.value;
             sendStateToSocket(socket, localState);
         }
-        uiElements.kickRadio.onchange = onRadioChange;
-        uiElements.snareRadio.onchange = onRadioChange;
-        uiElements.synthRadio.onchange = onRadioChange;
+        uiElements.instrumentSelect.onchange = onInstrumentChange;
         uiElements.canvas.onclick =
             e => onCanvasClick(
                 event, socket, uiElements, localState, remoteStates)
@@ -401,26 +387,35 @@ function drawInterface(localState, remoteStates, uiElements, playbackState) {
                  seqDims.localBeatSize, playbackState);
 }
 
-function initUi(localState, remoteStates, uiElements, playbackState) {
-    let kickRadio = document.createElement('input');
-    kickRadio.setAttribute('type', 'radio');
-    kickRadio.setAttribute('name', 'instrument');
-    kickRadio.setAttribute('value', 'kick');
-    uiElements.kickRadio = document.body.appendChild(kickRadio);
+function initUi(localState, remoteStates, playbackState) {
+    let uiElements = {
+        instrumentSelect: null,
+        playButton: null,
+        canvas: null,
+    };
 
-    let snareRadio = document.createElement('input');
-    snareRadio.setAttribute('type', 'radio');
-    snareRadio.setAttribute('name', 'instrument');
-    snareRadio.setAttribute('value', 'snare');
-    uiElements.snareRadio = document.body.appendChild(snareRadio);
-
-    let synthRadio = document.createElement('input');
-    synthRadio.setAttribute('type', 'radio');
-    synthRadio.setAttribute('name', 'instrument');
-    synthRadio.setAttribute('value', 'synth');
-    uiElements.synthRadio = document.body.appendChild(synthRadio);
+    let instrumentSelect = document.createElement('select');
+    instrumentSelect.multiple = false;
+    let kickOption = document.createElement('option');
+    kickOption.value = 'kick';
+    kickOption.text = 'Kick drum';
+    instrumentSelect.add(kickOption);
+    let snareOption = document.createElement('option');
+    snareOption.value = 'snare';
+    snareOption.text = 'Snare drum';
+    instrumentSelect.add(snareOption);
+    let synthOption = document.createElement('option');
+    synthOption.value = 'synth';
+    synthOption.text = 'Synthesizer';
+    instrumentSelect.add(synthOption);
+    uiElements.instrumentSelect = document.body.appendChild(instrumentSelect);
 
     updateUiFromState(localState, uiElements);
+
+    let playButton = document.createElement('button');
+    playButton.setAttribute('type', 'button');
+    playButton.innerHTML = "Play/Stop";
+    uiElements.playButton = document.body.appendChild(playButton);
 
     document.body.appendChild(document.createElement('br'));
 
@@ -434,15 +429,18 @@ function initUi(localState, remoteStates, uiElements, playbackState) {
         window.requestAnimationFrame(draw);
     }
     window.requestAnimationFrame(draw);
+
+    return uiElements;
 }
 
 function updateUiFromState(localState, uiElements) {
-    if (localState.instrument === "kick") {
-        uiElements.kickRadio.checked = true;
-    } else if (localState.instrument === "snare") {
-        uiElements.snareRadio.checked = true;
-    } else if (localState.instrument === "synth") {
-        uiElements.synthRadio.checked = true;
+    // TODO: there's gotta be a better way to do this, ugh.
+    const options = uiElements.instrumentSelect.options;
+    for (let optionIx = 0; optionIx < options.length; optionIx++) {
+        if (options[optionIx].value === localState.instrument) {
+            uiElements.instrumentSelect.selectedIndex = optionIx;
+            break;
+        }
     }
 }
 
@@ -459,13 +457,9 @@ function init() {
     for (let i = 0; i < NUM_BEATS; i++) {
         localState.sequence[i] = -1;
     }
-    let uiElements = {
-        kickRadio: null,
-        snareRadio: null,
-        canvas: null,
-    };
     let remoteStates = [];
-    initUi(localState, remoteStates, uiElements, playbackState);
+    let uiElements =
+        initUi(localState, remoteStates, playbackState);
     setupServerEvents(uiElements, localState, remoteStates);
     initSounds().then(function(audio) {
         function keyCallback(event) {
@@ -475,6 +469,9 @@ function init() {
             }
         }
         document.addEventListener('keydown', keyCallback);
+        uiElements.playButton.onclick = e => {
+            togglePlayPause(playbackState, audio, localState, remoteStates);
+        }
     });
 }
 
