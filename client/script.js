@@ -233,6 +233,12 @@ function setupServerEvents(uiElements, localState, remoteStates) {
         uiElements.canvas.onclick =
             e => onCanvasClick(
                 event, socket, uiElements, localState, remoteStates)
+        uiElements.clearButton.onclick = function() {
+            for (let i = 0; i < localState.sequence.length; i++) {
+                localState.sequence[i] = -1;
+            }
+            sendStateToSocket(socket, localState);
+        }
     });
 }
 
@@ -419,6 +425,11 @@ function initUi(localState, remoteStates, playbackState) {
     playButton.setAttribute('type', 'button');
     playButton.innerHTML = "Play/Stop";
     uiElements.playButton = document.body.appendChild(playButton);
+
+    let clearButton = document.createElement('button');
+    clearButton.setAttribute('type', 'button');
+    clearButton.innerHTML = "Clear";
+    uiElements.clearButton = document.body.appendChild(clearButton);
 
     document.body.appendChild(document.createElement('br'));
 

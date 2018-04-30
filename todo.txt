@@ -1,7 +1,6 @@
 * Enable varying # of beats per loop
 * Add more instruments
 * Improve UI
-  - Add a play/pause button (instead of only using space bar)
   - Label stuff, lol
 * Use binary comms between clients and server
 * Enable multiple "rooms".
