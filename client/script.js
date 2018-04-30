@@ -69,8 +69,7 @@ function initSounds() {
     }).then(function(decodedSounds) {
         return {
             audioCtx: audioCtx,
-            kickSound: decodedSounds[0],
-            snareSound: decodedSounds[1],
+            drumSounds: decodedSounds,
             synth: initSynth(audioCtx)
         }
     });
@@ -242,29 +241,23 @@ function setupServerEvents(uiElements, localState, remoteStates) {
     });
 }
 
-function getInstrumentSound(audio, instrumentName) {
-    let sound = null;
-    if (instrumentName === "kick") {
-        sound = audio.kickSound;
-    } else if (instrumentName === "snare") {
-        sound = audio.snareSound;
-    }
-    return sound;
-}
-
 function playBeat(beatIndex, sequence, audio, instrumentName) {
-    if (sequence[beatIndex] >= 0) {
+    const soundIndex = sequence[beatIndex];
+    if (soundIndex >= 0) {
         if (instrumentName === 'synth') {
-            const noteIx = sequence[beatIndex] + 24;
+            const noteIx = soundIndex + 24;
             audio.synth.osc.frequency.setValueAtTime(
                 noteFrequency(noteIx), audio.audioCtx.currentTime);
             audio.synth.gain.gain.linearRampToValueAtTime(
                 1, audio.audioCtx.currentTime + 0.01);
             audio.synth.gain.gain.linearRampToValueAtTime(
                 0, audio.audioCtx.currentTime + 0.1);
-        } else {
-            playSoundFromBuffer(
-                audio.audioCtx, getInstrumentSound(audio, instrumentName));
+        } else if (instrumentName === 'drums') {
+
+            if (soundIndex < audio.drumSounds.length) {
+                playSoundFromBuffer(audio.audioCtx,
+                                    audio.drumSounds[soundIndex]);
+            }
         }
     }
 }
@@ -405,14 +398,10 @@ function initUi(localState, remoteStates, playbackState) {
 
     let instrumentSelect = document.createElement('select');
     instrumentSelect.multiple = false;
-    let kickOption = document.createElement('option');
-    kickOption.value = 'kick';
-    kickOption.text = 'Kick drum';
-    instrumentSelect.add(kickOption);
-    let snareOption = document.createElement('option');
-    snareOption.value = 'snare';
-    snareOption.text = 'Snare drum';
-    instrumentSelect.add(snareOption);
+    let drumOption = document.createElement('option');
+    drumOption.value = 'drums';
+    drumOption.text = 'Drums';
+    instrumentSelect.add(drumOption);
     let synthOption = document.createElement('option');
     synthOption.value = 'synth';
     synthOption.text = 'Synthesizer';
@@ -461,7 +450,7 @@ function updateUiFromState(localState, uiElements) {
 function init() {
     let localState = {
         sequence: [],
-        instrument: "kick",
+        instrument: "drums",
         id: -1
     };
     let playbackState = {

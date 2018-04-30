@@ -245,7 +245,7 @@ fn main() {
             let mut connections = thread_connections.lock().unwrap();
             let (to_thread, from_main) = mpsc::channel();
             let new_client_state =
-                ClientState::new(NUM_BEATS, "kick".to_string());
+                ClientState::new(NUM_BEATS, "drums".to_string());
             connections.push(ClientInfo {
                 id: ClientId(next_id),
                 to_client_thread: to_thread,
