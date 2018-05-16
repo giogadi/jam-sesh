@@ -282,6 +282,47 @@ function togglePlayPause() {
         window.setInterval(beatFn.bind(this), /*delay=*/ticksPerBeat);
 }
 
+function openSocket() {
+    return new Promise(function(resolve, reject) {
+        let socket =
+            new WebSocket('ws://' + window.location.hostname + ':2795',
+                          'giogadi');
+        socket.onopen = function(e) {
+            resolve(socket);
+        }
+        socket.onerror = function(e) {
+            reject();
+        }
+    });
+}
+
+function sendStateToSocket(socket, sequence) {
+    let stateMsg = {
+        sequence: sequence,
+    };
+    socket.send(JSON.stringify(stateMsg));
+    console.log("Sent " + stateMsg.sequence);
+}
+
+// Method of JamModel
+function updateStateFromSocketEvent(event) {
+    let update = JSON.parse(event.data);
+    console.log("Received message " + JSON.stringify(update));
+    //this.sequence = update.client_states[0].sequence.slice();
+    this.sequence = update.sequence.slice();
+    this.stateChange(this.playback.playIntervalId === null
+                     ? -1 : this.playback.beatIndex,
+                     this.sequence);
+}
+
+// Method of JamModel
+function onSocketOpen(socket) {
+    this.sendStateToServer = function () {
+        sendStateToSocket(socket, this.sequence);
+    }
+    socket.onmessage = updateStateFromSocketEvent.bind(this);
+}
+
 let JamModel = function JamModel() {
     this.audio = initSound();
     this.sequence = [];
@@ -292,11 +333,13 @@ let JamModel = function JamModel() {
     }
     this.stateChange = function(beatIndex, sequence) { };
     this.togglePlayback = togglePlayPause.bind(this);
+    this.sendStateToServer = function () { };
     this.updateSequence = function updateSequence(beatIx, noteIx) {
         this.sequence[beatIx] = noteIx;
         this.stateChange(this.playback.playIntervalId === null
                          ? -1 : this.playback.beatIndex,
                          this.sequence);
+        this.sendStateToServer();
     }
 
     const NUM_BEATS = 16;
@@ -308,6 +351,8 @@ let JamModel = function JamModel() {
                          ? -1 : this.playback.beatIndex,
                          this.sequence);
     };
+
+    openSocket().then(onSocketOpen.bind(this));
 }
 
 let jamModel = new JamModel();
@@ -363,20 +408,6 @@ jamModel.forceStateUpdate();
 //     source.buffer = buffer;
 //     source.connect(audioCtx.destination);
 //     source.start(0);
-// }
-
-// function openSocket() {
-//     return new Promise(function(resolve, reject) {
-//         let socket =
-//             new WebSocket('ws://' + window.location.hostname + ':2795',
-//                           'giogadi');
-//         socket.onopen = function(e) {
-//             resolve(socket);
-//         }
-//         socket.onerror = function(e) {
-//             reject();
-//         }
-//     });
 // }
 
 // // function updateStateFromServerMessage(
