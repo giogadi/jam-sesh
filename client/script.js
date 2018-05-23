@@ -1,22 +1,30 @@
-function getSequencerDimensions(canvasRect, numBeats, numNotes) {
+function getGearDimensions(canvasRect, numBeats, numNotes, numDrums) {
     const w = canvasRect.width;
     const h = canvasRect.height;
     const startX = 0;
     const startY = 0;
+    const spacing = 50;
+
     // Want startX + beatSize * numBeats <= w &&
-    // startY + numNotes*beatSize <= h.
-    let beatSize = Math.floor((w - startX) / numBeats);
-    beatSize = Math.min(beatSize,
-                        Math.floor((h - startY) / numNotes));
+    // startY + numNotes*beatSize + spacing + numDrums*beatSize <= h.
+    const beatSizeFromWidth = Math.floor((w - startX) / numBeats);
+    const beatSizeFromHeight = Math.floor(
+        (h - startY - spacing) / (numNotes + numDrums));
+    const beatSize = Math.min(beatSizeFromWidth, beatSizeFromHeight);
     return {
-        beatSize: beatSize,
-        startX: startX,
-        startY: startY,
+        synthBeatSize: beatSize,
+        synthStartX: startX,
+        synthStartY: startY,
+        spacing: spacing,
+        drumBeatSize: beatSize,
+        drumStartX: startX,
+        drumStartY: startY + numNotes * beatSize + spacing,
     };
 }
 
 function drawSequence(
-    context2d, startX, startY, numNotes, sequence, beatSize, currentBeatIndex) {
+    context2d, startX, startY, numNotes, sequence, beatSize, currentBeatIndex,
+    noteIndexToCellIndexFn) {
     const numBeats = sequence.length;
     // Draw our beatboxes, where inactive beats are grey and active
     // beats are red.
@@ -32,7 +40,7 @@ function drawSequence(
             continue;
         }
         const noteIx = sequence[beatIx];
-        const cellIx = noteIndexToCellIndex(noteIx);
+        const cellIx = noteIndexToCellIndexFn(noteIx);
         const cellRow = (numNotes - 1) - cellIx;
         context2d.fillRect(
             startX + beatIx * beatSize,
@@ -66,57 +74,95 @@ function drawSequence(
     }
 }
 
-const NOTE_OFFSET = 24;
-
-function cellIndexToNoteIndex(cellIndex) {
-    return cellIndex + NOTE_OFFSET;
+// TODO: All these cell-note conversions should probably be part of
+// the View's state (so that we can have scrollbars and shit)
+const SYNTH_NOTE_OFFSET = 24;
+function synthCellIndexToNoteIndex(cellIndex) {
+    return cellIndex + SYNTH_NOTE_OFFSET;
+}
+function synthNoteIndexToCellIndex(noteIndex) {
+    return noteIndex - SYNTH_NOTE_OFFSET;
 }
 
-function noteIndexToCellIndex(noteIndex) {
-    return noteIndex - NOTE_OFFSET;
+function drumCellIndexToNoteIndex(cellIndex) {
+    return cellIndex;
+}
+function drumNoteIndexToCellIndex(noteIndex) {
+    return noteIndex;
 }
 
-function onCanvasClick(event, canvas, numNotes, sequence, updateSequenceFn) {
-    const canvasRect = canvas.getBoundingClientRect();
-    const seqDims = getSequencerDimensions(
-        canvasRect, sequence.length, numNotes);
-    // TODO: figure out how offsetLeft, canvasRect.left, etc. all fit
-    // together.
-    const x = (event.clientX - canvas.offsetLeft) - seqDims.startX;
-    const y = (event.clientY - canvas.offsetTop) - seqDims.startY;
+// With bottom-left cell index of (0,0) and (x=0,y=0) equal to top-left corner.
+// Returns null if (x,y) does not lie on grid.
+function getClickedCellIx(x, y, numRows, numCols, cellSize) {
+    const colIx = Math.floor(x / cellSize);
+    if (colIx >= numCols) {
+        // Clicked too far to the right
+        return null;
+    }
+    const rowIx = (numRows - 1) - Math.floor(y / cellSize);
+    if (rowIx < 0) {
+        // Clicked too far down
+        return null;
+    }
+    if (rowIx >= numRows) {
+        // Clicked too far up
+        return null;
+    }
+    return {
+        row: rowIx,
+        col: colIx,
+    }
+}
+
+function onSequencerClick(x, y, beatSize, numBeats, numNotes,
+                          sequence,
+                          cellToNoteFn,
+                          updateSequenceFn) {
     if (x < 0) {
-        // Clicked too far to the left
+        // Too far left
         return;
     }
     if (y < 0) {
-        // Clicked too far up
+        // Too far up
         return;
     }
-    const clickedBeatIx = Math.floor(x / seqDims.beatSize);
-    if (clickedBeatIx >= sequence.length) {
-        // Clicked too far to the right
+    const cell = getClickedCellIx(x, y, numNotes, numBeats, beatSize);
+    console.log(x + " " + y + " " + JSON.stringify(cell));
+    if (cell === null) {
         return;
     }
-    const clickedNoteRow = Math.floor(y / seqDims.beatSize);
-    if (clickedNoteRow >= numNotes) {
-        // Clicked too far down
-        return;
-    }
-    const clickedCellIx = (numNotes - 1) - clickedNoteRow;
-    console.log(clickedBeatIx + " " + clickedCellIx);
-    const noteIx = cellIndexToNoteIndex(clickedCellIx);
-    // If user clicked on the currently active note, then deactivate
-    // that beat. Otherwise, change this beat to the clicked note.
-    if (sequence[clickedBeatIx] === noteIx) {
-        updateSequenceFn(clickedBeatIx, -1);
+    const beatIx = cell.col;
+    const noteIx = cellToNoteFn(cell.row);
+    if (sequence[beatIx] === noteIx) {
+        updateSequenceFn(beatIx, -1);
     } else {
-        updateSequenceFn(clickedBeatIx, noteIx);
+        updateSequenceFn(beatIx, noteIx);
     }
+}
+
+function onCanvasClick(event, canvas, numNotes, numDrums,
+                       synthSequence, drumSequence,
+                       updateSynthSequenceFn,
+                       updateDrumSequenceFn) {
+    const canvasRect = canvas.getBoundingClientRect();
+    const gearDims = getGearDimensions(
+        canvasRect, synthSequence.length, numNotes, numDrums);
+    const x = (event.clientX - canvas.offsetLeft);
+    const y = (event.clientY - canvas.offsetTop);
+    onSequencerClick(x - gearDims.synthStartX, y - gearDims.synthStartY,
+                     gearDims.synthBeatSize,
+                     synthSequence.length, numNotes, synthSequence,
+                     synthCellIndexToNoteIndex,
+                     updateSynthSequenceFn);
+    onSequencerClick(x - gearDims.drumStartX, y - gearDims.drumStartY,
+                     gearDims.drumBeatSize,
+                     drumSequence.numBeats, numDrums, drumSequence,
+                     drumCellIndexToNoteIndex,
+                     updateDrumSequenceFn);
 }
 
 // Method of JamView
 function drawInterface() {
-    // TODO: draw single-line sequence for the drums
     const canvasRect = this.uiElements.canvas.getBoundingClientRect();
     // Clear the canvas
     let ctx = this.uiElements.canvas.getContext('2d');
@@ -124,23 +170,31 @@ function drawInterface() {
     ctx.fillStyle = 'rgb(200, 200, 200)';
     ctx.fillRect(0, 0, canvasRect.width, canvasRect.height);
 
-    if (this.viewModel.sequence.length === 0) {
-        return;
-    }
+    // TODO: we assume synth and drum sequence have same length here
+    const gearDims =
+          getGearDimensions(canvasRect, this.viewModel.synthSequence.length,
+                            this.numNotes, this.numDrums);
 
-    const seqDims =
-          getSequencerDimensions(canvasRect, this.viewModel.sequence.length,
-                                 this.numNotes);
-    drawSequence(ctx, seqDims.startX, seqDims.startY, this.numNotes,
-                 this.viewModel.sequence, seqDims.beatSize,
-                 this.viewModel.currentBeatIndex);
+    // Synth sequencer
+    drawSequence(ctx, gearDims.synthStartX, gearDims.synthStartY, this.numNotes,
+                 this.viewModel.synthSequence, gearDims.synthBeatSize,
+                 this.viewModel.currentBeatIndex,
+                 synthNoteIndexToCellIndex);
+
+    // Drum sequencer
+    drawSequence(ctx, gearDims.drumStartX, gearDims.drumStartY,
+                 this.numDrums,
+                 this.viewModel.drumSequence, gearDims.drumBeatSize,
+                 this.viewModel.currentBeatIndex,
+                 drumNoteIndexToCellIndex);
 }
 
 // NOTE TO SELF: this is a "named function expression".
 //
 // But why the fuck don't we just declare the function "normally"?
 let JamView = function JamView(element) {
-    this.onClickUpdateSequence = s => {};
+    this.onClickUpdateSynthSequence = s => {};
+    this.onClickUpdateDrumSequence = s => {};
     this.togglePlayback = function() {};
 
     this.uiElements = {
@@ -165,20 +219,26 @@ let JamView = function JamView(element) {
     this.uiElements.canvas = element.appendChild(canvas);
 
     this.viewModel = {
-        sequence: [-1],
+        synthSequence: [-1],
+        drumSequence: [-1],
         currentBeatIndex: -1,
     };
 
     this.updateView = function updateView(newViewModel) {
-        this.viewModel.sequence = newViewModel.sequence.slice();
+        this.viewModel.synthSequence = newViewModel.synthSequence.slice();
+        this.viewModel.drumSequence = newViewModel.drumSequence.slice();
         this.viewModel.currentBeatIndex = newViewModel.currentBeatIndex;
     }
 
     this.numNotes = 13;
+    this.numDrums = 2;
 
     let onClick = function onClick(event) {
-        onCanvasClick(event, this.uiElements.canvas, this.numNotes,
-                      this.viewModel.sequence, this.onClickUpdateSequence);
+        onCanvasClick(event, this.uiElements.canvas, this.numNotes, this.numDrums,
+                      this.viewModel.synthSequence,
+                      this.viewModel.drumSequence,
+                      this.onClickUpdateSynthSequence,
+                      this.onClickUpdateDrumSequence);
     }
     this.uiElements.canvas.onclick = onClick.bind(this);
 
@@ -204,12 +264,46 @@ function initSynth(audioCtx) {
     };
 }
 
+function getSoundData(filename) {
+    return new Promise(function(resolve, reject) {
+        let request = new XMLHttpRequest();
+        request.open(
+            'GET', 'http://' + window.location.hostname + ":2794/" + filename);
+        request.responseType = 'arraybuffer';
+        request.onload = function() {
+            resolve(request.response);
+        }
+        request.onerror = function() {
+            reject(request.statusText);
+        }
+        request.send();
+    });
+}
+
 function initSound() {
+    let soundNames = ['kick', 'snare'];
+    let sounds = soundNames.map(function(soundName) {
+        return getSoundData(soundName + '.wav')
+    });
     let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    return {
-        audioCtx: audioCtx,
-        synth: initSynth(audioCtx),
-    };
+    return Promise.all(sounds).then(function(loadedSounds) {
+        return Promise.all(loadedSounds.map(function(loadedSound) {
+            return audioCtx.decodeAudioData(loadedSound);
+        }));
+    }).then(function(decodedSounds) {
+        return {
+            audioCtx: audioCtx,
+            drumSounds: decodedSounds,
+            synth: initSynth(audioCtx)
+        }
+    });
+}
+
+function playSoundFromBuffer(audioCtx, buffer) {
+    let source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioCtx.destination);
+    source.start(0);
 }
 
 const BASE_FREQS = [
@@ -239,24 +333,38 @@ function noteFrequency(note_ix) {
     return BASE_FREQS[base_freq_ix] * (1 << num_octaves_above);
 }
 
-function perBeat(audio, sequence, beatIndex) {
-    const soundIndex = sequence[beatIndex];
-    if (soundIndex < 0) return;
-    audio.synth.osc.frequency.setValueAtTime(
-        noteFrequency(soundIndex), audio.audioCtx.currentTime);
-    audio.synth.gain.gain.linearRampToValueAtTime(
-        1, audio.audioCtx.currentTime + 0.01);
-    audio.synth.gain.gain.linearRampToValueAtTime(
-        0, audio.audioCtx.currentTime + 0.1);
+function perBeat(audio, synthSequence, drumSequence, beatIndex) {
+    const noteIx = synthSequence[beatIndex];
+    if (noteIx >= 0) {
+        audio.synth.osc.frequency.setValueAtTime(
+            noteFrequency(noteIx), audio.audioCtx.currentTime);
+        audio.synth.gain.gain.linearRampToValueAtTime(
+            1, audio.audioCtx.currentTime + 0.01);
+        audio.synth.gain.gain.linearRampToValueAtTime(
+            0, audio.audioCtx.currentTime + 0.1);
+    }
+
+    const drumIx = drumSequence[beatIndex];
+    if (drumIx >= 0) {
+        if (drumIx >= audio.drumSounds.length) {
+            throw "ERROR: bad drum ix " + drumIx;
+        }
+        playSoundFromBuffer(audio.audioCtx, audio.drumSounds[drumIx]);
+    }
 }
 
 // JamModel method
 function togglePlayPause() {
+    // If we are still waiting for audio to load, don't start
+    // playback.
+    if (this.audio === null) {
+        return;
+    }
     if (this.playback.playIntervalId !== null) {
         window.clearInterval(this.playback.playIntervalId);
         this.playback.playIntervalId = null;
         this.playback.beatIndex = 0;
-        this.stateChange(-1, this.sequence);
+        this.stateChange(-1, this.synthSequence, this.drumSequence);
         return;
     }
     const ticksPerBeat = (1 / this.playback.bpm) * 60 * 1000;
@@ -264,19 +372,26 @@ function togglePlayPause() {
     // first time until after the interval duration; we want
     // playback to start as soon as the user hits play, so we
     // manually invoke the playback function once.
-    perBeat(this.audio, this.sequence, this.playback.beatIndex);
-    this.stateChange(this.playback.beatIndex, this.sequence);
+    perBeat(this.audio, this.synthSequence, this.drumSequence,
+            this.playback.beatIndex);
+    this.stateChange(this.playback.beatIndex,
+                     this.synthSequence, this.drumSequence);
     let beatFn = function beatFn() {
         // We have to increment the beatIndex right at the
         // beginning of the "iteration" because other parts
         // (like UI) use beatIndex, and so beatIndex needs to
         // correspond to the "actual" beatIndex for the entire
         // iteration.
+        //
+        // TODO: This assumes all sequences have same length.
         this.playback.beatIndex =
             (this.playback.beatIndex + 1) %
-            this.sequence.length;
-        this.stateChange(this.playback.beatIndex, this.sequence);
-        perBeat(this.audio, this.sequence, this.playback.beatIndex);
+            this.synthSequence.length;
+        this.stateChange(this.playback.beatIndex,
+                         this.synthSequence,
+                         this.drumSequence);
+        perBeat(this.audio, this.synthSequence, this.drumSequence,
+                this.playback.beatIndex);
     };
     this.playback.playIntervalId =
         window.setInterval(beatFn.bind(this), /*delay=*/ticksPerBeat);
@@ -291,361 +406,97 @@ function openSocket() {
             resolve(socket);
         }
         socket.onerror = function(e) {
-            reject();
+            reject(e);
         }
     });
 }
 
-function sendStateToSocket(socket, sequence) {
+function sendStateToSocket(socket, synthSequence, drumSequence) {
     let stateMsg = {
-        sequence: sequence,
+        synth_sequence: synthSequence,
+        drum_sequence: drumSequence,
     };
-    socket.send(JSON.stringify(stateMsg));
-    console.log("Sent " + stateMsg.sequence);
+    const stateMsgStr = JSON.stringify(stateMsg);
+    socket.send(stateMsgStr);
+    console.log("Sent " + stateMsgStr);
 }
 
 // Method of JamModel
 function updateStateFromSocketEvent(event) {
     let update = JSON.parse(event.data);
     console.log("Received message " + JSON.stringify(update));
-    //this.sequence = update.client_states[0].sequence.slice();
-    this.sequence = update.sequence.slice();
+    this.synthSequence = update.synth_sequence.slice();
+    this.drumSequence = update.drum_sequence.slice();
     this.stateChange(this.playback.playIntervalId === null
                      ? -1 : this.playback.beatIndex,
-                     this.sequence);
+                     this.synthSequence,
+                     this.drumSequence);
 }
 
 // Method of JamModel
 function onSocketOpen(socket) {
     this.sendStateToServer = function () {
-        sendStateToSocket(socket, this.sequence);
+        sendStateToSocket(socket, this.synthSequence, this.drumSequence);
     }
     socket.onmessage = updateStateFromSocketEvent.bind(this);
 }
 
 let JamModel = function JamModel() {
-    this.audio = initSound();
-    this.sequence = [];
+    let setAudio = function setAudio(audio) {
+        this.audio = audio;
+    }
+    initSound().then(setAudio.bind(this));
+    this.synthSequence = [];
+    this.drumSequence = [];
     this.playback = {
         playIntervalId: null,
         beatIndex: 0,
         bpm: 240,
     }
-    this.stateChange = function(beatIndex, sequence) { };
+    this.stateChange = function(beatIndex, synthSequence, drumSequence) { };
     this.togglePlayback = togglePlayPause.bind(this);
     this.sendStateToServer = function () { };
-    this.updateSequence = function updateSequence(beatIx, noteIx) {
-        this.sequence[beatIx] = noteIx;
+    this.updateSynthSequence = function updateSynthSequence(beatIx, noteIx) {
+        this.synthSequence[beatIx] = noteIx;
         this.stateChange(this.playback.playIntervalId === null
                          ? -1 : this.playback.beatIndex,
-                         this.sequence);
+                         this.synthSequence, this.drumSequence);
+        this.sendStateToServer();
+    }
+    this.updateDrumSequence = function updateDrumSequence(beatIx, noteIx) {
+        this.drumSequence[beatIx] = noteIx;
+        this.stateChange(this.playback.playIntervalId === null
+                         ? -1 : this.playback.beatIndex,
+                         this.synthSequence, this.drumSequence);
         this.sendStateToServer();
     }
 
     const NUM_BEATS = 16;
     for (let i = 0; i < NUM_BEATS; i++) {
-        this.sequence.push(-1);
+        this.synthSequence.push(-1);
+        this.drumSequence.push(-1);
     }
     this.forceStateUpdate = function forceStateUpdate() {
         this.stateChange(this.playback.playIntervalId === null
                          ? -1 : this.playback.beatIndex,
-                         this.sequence);
+                         this.synthSequence, this.drumSequence);
     };
 
-    openSocket().then(onSocketOpen.bind(this));
+    openSocket().then(onSocketOpen.bind(this),
+                      e => console.log("socket connection failed: " + e));
 }
 
 let jamModel = new JamModel();
 let jamView = new JamView(document.body);
-jamView.onClickUpdateSequence = jamModel.updateSequence.bind(jamModel);
+jamView.onClickUpdateSynthSequence = jamModel.updateSynthSequence.bind(jamModel);
+jamView.onClickUpdateDrumSequence = jamModel.updateDrumSequence.bind(jamModel);
 jamView.togglePlayback = jamModel.togglePlayback.bind(jamModel);
-jamModel.stateChange = function(beatIndex, sequence) {
-    let modelView = {
-        sequence: sequence,
+jamModel.stateChange = function(beatIndex, synthSequence, drumSequence) {
+    let viewModel = {
+        synthSequence: synthSequence,
+        drumSequence: drumSequence,
         currentBeatIndex: beatIndex,
     };
-    jamView.updateView(modelView);
+    jamView.updateView(viewModel);
 };
 jamModel.forceStateUpdate();
-
-// function getSoundData(filename) {
-//     return new Promise(function(resolve, reject) {
-//         let request = new XMLHttpRequest();
-//         request.open(
-//             'GET', 'http://' + window.location.hostname + ":2794/" + filename);
-//         request.responseType = 'arraybuffer';
-//         request.onload = function() {
-//             resolve(request.response);
-//         }
-//         request.onerror = function() {
-//             reject(request.statusText);
-//         }
-//         request.send();
-//     });
-// }
-
-// function initSounds() {
-//     let soundNames = ['kick', 'snare'];
-//     let sounds = soundNames.map(function(soundName) {
-//         return getSoundData(soundName + '.wav')
-//     });
-//     let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-//     return Promise.all(sounds).then(function(loadedSounds) {
-//         return Promise.all(loadedSounds.map(function(loadedSound) {
-//             return audioCtx.decodeAudioData(loadedSound);
-//         }));
-//     }).then(function(decodedSounds) {
-//         return {
-//             audioCtx: audioCtx,
-//             drumSounds: decodedSounds,
-//             synth: initSynth(audioCtx)
-//         }
-//     });
-// }
-
-// function playSoundFromBuffer(audioCtx, buffer) {
-//     let source = audioCtx.createBufferSource();
-//     source.buffer = buffer;
-//     source.connect(audioCtx.destination);
-//     source.start(0);
-// }
-
-// // function updateStateFromServerMessage(
-// //     uiElements, localState, remoteStates, event) {
-// //     let update = JSON.parse(event.data);
-// //     console.log("Received message " + JSON.stringify(update));
-// //     if (update.update_type === "intro") {
-// //         localState.id = update.client_id;
-// //         remoteStates.length = 0;  // Clear the remoteStates
-// //         for (clientState of update.client_states) {
-// //             if (clientState.client_id === localState.id) {
-// //                 if (clientState.sequence.length !=
-// //                     localState.sequence.length) {
-// //                     throw "Mismatch in beat count!";
-// //                 }
-// //                 if (localState.sequence.length != NUM_BEATS) {
-// //                     throw "wrong # of beats!";
-// //                 }
-// //                 for (let i = 0; i < NUM_BEATS; i++) {
-// //                     localState.sequence[i] =
-// //                         clientState.sequence[i];
-// //                 }
-// //                 localState.instrument = clientState.instrument;
-// //             } else {
-// //                 remoteStates.push({
-// //                     client_id: clientState.client_id,
-// //                     sequence: clientState.sequence,
-// //                     instrument: clientState.instrument
-// //                 });
-// //             }
-// //         }
-// //         updateUiFromState(localState, uiElements);
-// //         return;
-// //     }
-
-// //     if (localState.id < 0) {
-// //         throw "received server update without being assigned an ID";
-// //     }
-
-// //     let fromRemoteId = update.client_id;
-// //     if (fromRemoteId === localState.id) {
-// //         throw "received server update from client with same ID as me";
-// //     }
-// //     let knownStateIx = -1;
-// //     for (i = 0; i < remoteStates.length; i++) {
-// //         if (remoteStates[i].client_id === fromRemoteId) {
-// //             knownStateIx = i;
-// //             break;
-// //         }
-// //     }
-// //     if (update.update_type === "disconnect") {
-// //         if (knownStateIx === -1) {
-// //             throw "disconnect message received for unknown client ID";
-// //         }
-// //         // splice removes 1 element, starting at knownStateIx
-// //         remoteStates.splice(knownStateIx, 1);
-// //         console.log("client " + fromRemoteId + " disconnected");
-// //     } else if (update.update_type === "state") {
-// //         let newState = {
-// //             client_id: fromRemoteId,
-// //             sequence: update.client_state.sequence,
-// //             instrument: update.client_state.instrument
-// //         };
-// //         if (knownStateIx === -1) {
-// //             remoteStates.push(newState);
-// //         } else {
-// //             remoteStates[knownStateIx].sequence = update.client_state.sequence;
-// //             remoteStates[knownStateIx].instrument =
-// //                 update.client_state.instrument;
-// //         }
-// //         console.log("updated state from client " + fromRemoteId);
-// //     }
-// // }
-
-// // function sendStateToSocket(socket, localState) {
-// //     let localStateMsg = {
-// //         sequence: localState.sequence,
-// //         instrument: localState.instrument,
-// //     };
-// //     socket.send(JSON.stringify(localStateMsg));
-// //     console.log("Sent instrument " + localStateMsg.instrument);
-// //     console.log("Sent sequence " + localStateMsg.sequence);
-// // }
-
-// // TODO: Currently, state update and updates out to server are
-// // coupled; maybe separate them?
-// // function setupServerEvents(uiElements, localState, remoteStates) {
-// //     openSocket().then(function(socket) {
-// //         socket.onmessage =
-// //             event => updateStateFromServerMessage(
-// //                 uiElements, localState, remoteStates, event);
-// //         let onInstrumentChange = function(e) {
-// //             localState.instrument = e.target.value;
-// //             sendStateToSocket(socket, localState);
-// //         }
-// //         uiElements.instrumentSelect.onchange = onInstrumentChange;
-// //         uiElements.canvas.onclick =
-// //             e => onCanvasClick(
-// //                 event, socket, uiElements, localState, remoteStates)
-// //         uiElements.clearButton.onclick = function() {
-// //             for (let i = 0; i < localState.sequence.length; i++) {
-// //                 localState.sequence[i] = -1;
-// //             }
-// //             sendStateToSocket(socket, localState);
-// //         }
-// //     });
-// // }
-
-// function perBeat(audio, localState) {
-//     const beatIndex = localState.playbackState.beatIndex;
-//     const soundIndex = localState.gearState.synthSequence[beatIndex];
-//     const noteIndex = soundIndex + 24;
-//     audio.synth.osc.frequency.setValueAtTime(
-//         noteFrequency(noteIndex), audio.audioCtx.currentTime);
-//     audio.synth.gain.gain.linearRampToValueAtTime(
-//         1, audio.audioCtx.currentTime + 0.01);
-//     audio.synth.gain.gain.linearRampToValueAtTime(
-//         0, audio.audioCtx.currentTime + 0.1);
-// }
-
-// function togglePlayPause(localState, audio) {
-//     if (localState.playbackState.playIntervalId === null) {
-//         const ticksPerBeat = (1 / localState.bpm) * 60 * 1000;
-//         // By default, setInterval doesn't invoke the function for the
-//         // first time until after the interval duration; we want
-//         // playback to start as soon as the user hits play, so we
-//         // manually invoke the playback function once.
-//         perBeat(audio, localState);
-//         localState.playbackState.playIntervalId =
-//             window.setInterval(function() {
-//                 // We have to increment the beatIndex right at the
-//                 // beginning of the "iteration" because other parts
-//                 // (like UI) use beatIndex, and so beatIndex needs to
-//                 // correspond to the "actual" beatIndex for the entire
-//                 // iteration.
-//                 localState.playbackState.beatIndex =
-//                     (localState.playbackState.beatIndex + 1) %
-//                     localState.numBeats;
-//                 perBeat(audio, localState);
-//             },
-//                                /*delay=*/ticksPerBeat);
-//     } else {
-//         window.clearInterval(localState.playbackState.playIntervalId);
-//         localState.playbackState.playIntervalId = null;
-//         localState.playbackState.beatIndex = 0;
-//     }
-// }
-
-// const NUM_NOTES = 13;
-
-// function drawInterface(localState, uiElements) {
-//     // TODO: draw single-line sequence for the drums
-//     const canvasRect = uiElements.canvas.getBoundingClientRect();
-//     const seqDims =
-//           getSequencerDimensions(canvasRect, localState.numBeats);
-//     // Clear the canvas
-//     let ctx = uiElements.canvas.getContext('2d');
-//     ctx.clearRect(0, 0, canvasRect.width, canvasRect.height);
-//     ctx.fillStyle = 'rgb(200, 200, 200)';
-//     ctx.fillRect(0, 0, canvasRect.width, canvasRect.height);
-//     // Draw local sequence
-//     drawSequence(ctx, seqDims.startX, seqDims.startY,
-//                  localState.gearState.synthSequence, localState.numBeats,
-//                  seqDims.beatSize, localState.playbackState);
-// }
-
-// function initUi(localState) {
-//     let uiElements = {
-//         playButton: null,
-//         canvas: null,
-//     };
-
-//     let playButton = document.createElement('button');
-//     playButton.setAttribute('type', 'button');
-//     playButton.innerHTML = "Play/Stop";
-//     uiElements.playButton = document.body.appendChild(playButton);
-
-//     document.body.appendChild(document.createElement('br'));
-
-//     let canvas = document.createElement('canvas');
-//     canvas.setAttribute('id', 'interface');
-//     canvas.setAttribute('height', '600');
-//     uiElements.canvas = document.body.appendChild(canvas);
-//     uiElements.canvas.onclick =
-//         e => onCanvasClick(e, uiElements, localState);
-
-//     function draw() {
-//         drawInterface(localState, uiElements);
-//         window.requestAnimationFrame(draw);
-//     }
-//     window.requestAnimationFrame(draw);
-
-//     return uiElements;
-// }
-
-// // function updateUiFromState(localState, uiElements) {
-// //     // TODO: there's gotta be a better way to do this, ugh.
-// //     const options = uiElements.instrumentSelect.options;
-// //     for (let optionIx = 0; optionIx < options.length; optionIx++) {
-// //         if (options[optionIx].value === localState.instrument) {
-// //             uiElements.instrumentSelect.selectedIndex = optionIx;
-// //             break;
-// //         }
-// //     }
-// // }
-
-// function init() {
-//     const NUM_BEATS = 16;
-//     const BPM = 240;
-//     let localState = {
-//         gearState: {
-//             synthSequence: [],
-//         },
-//         playbackState: {
-//             playIntervalId: null,
-//             beatIndex: 0
-//         },
-//         numBeats: NUM_BEATS,
-//         bpm: BPM,
-//         id: -1
-//     };
-//     for (let i = 0; i < localState.numBeats; i++) {
-//         localState.gearState.synthSequence[i] = 0;
-//     }
-//     let uiElements = initUi(localState);
-//     // setupServerEvents(uiElements, localState, remoteStates);
-//     initSounds().then(function(audio) {
-//         function keyCallback(event) {
-//             if (event.key === " " ||
-//                 event.key === "SpaceBar") {
-//                 togglePlayPause(localState, audio);
-//             }
-//         }
-//         document.addEventListener('keydown', keyCallback);
-//         uiElements.playButton.onclick = e => {
-//             togglePlayPause(localState, audio);
-//         }
-//     });
-// }
-
-// init();

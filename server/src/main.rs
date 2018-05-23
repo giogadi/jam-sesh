@@ -19,17 +19,24 @@ type NoteIndex = i32;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct State {
-    sequence: Vec<NoteIndex>,
+    synth_sequence: Vec<NoteIndex>,
+    drum_sequence: Vec<NoteIndex>,
 }
 impl State {
     fn new(num_beats: usize) -> State {
         let mut state = State {
-            sequence: vec![-1; num_beats],
+            synth_sequence: vec![-1; num_beats],
+            drum_sequence: vec![-1; num_beats],
         };
         let default_note_ix = 24;
-        for (ix, note) in state.sequence.iter_mut().enumerate() {
+        for (ix, note) in state.synth_sequence.iter_mut().enumerate() {
             if ix % 4 == 0 {
                 *note = default_note_ix;
+            }
+        }
+        for (ix, note) in state.drum_sequence.iter_mut().enumerate() {
+            if ix % 4 == 0 {
+                *note = 0;
             }
         }
         state
@@ -53,6 +60,7 @@ fn maybe_relay_update_from_main_to_client(
     match result {
         Ok(message_from_main) => {
             let json_msg = serde_json::to_string(&message_from_main).unwrap();
+            println!("Sent {}", json_msg);
             to_client.send_message(&OwnedMessage::Text(json_msg)).unwrap();
         }
         Err(std::sync::mpsc::TryRecvError::Empty) => (),
