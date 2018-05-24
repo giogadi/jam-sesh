@@ -196,9 +196,11 @@ let JamView = function JamView(element) {
     this.onClickUpdateSynthSequence = s => {};
     this.onClickUpdateDrumSequence = s => {};
     this.togglePlayback = function() {};
+    this.changeBpm = function(newBpm) {};
 
     this.uiElements = {
         playButton: null,
+        bpmLabel: null,
         canvas: null,
     };
 
@@ -211,6 +213,9 @@ let JamView = function JamView(element) {
     };
     this.uiElements.playButton.onclick = play.bind(this);
 
+    this.uiElements.bpmLabel = element.appendChild(document.createElement('p'));
+    this.uiElements.bpmLabel.innerHTML = "BPM: N/A";
+
     element.appendChild(document.createElement('br'));
 
     let canvas = document.createElement('canvas');
@@ -222,12 +227,16 @@ let JamView = function JamView(element) {
         synthSequence: [-1],
         drumSequence: [-1],
         currentBeatIndex: -1,
+        bpm: 1,
     };
 
     this.updateView = function updateView(newViewModel) {
         this.viewModel.synthSequence = newViewModel.synthSequence.slice();
         this.viewModel.drumSequence = newViewModel.drumSequence.slice();
         this.viewModel.currentBeatIndex = newViewModel.currentBeatIndex;
+        this.viewModel.bpm = newViewModel.bpm;
+        this.uiElements.bpmLabel.innerHTML =
+            "BPM: " + newViewModel.bpm;
     }
 
     this.numNotes = 13;
@@ -247,6 +256,16 @@ let JamView = function JamView(element) {
         window.requestAnimationFrame(draw.bind(this));
     }
     window.requestAnimationFrame(draw.bind(this));
+
+    let changeBpmOnKey = function changeBpmOnKey(event) {
+        const delta = 10;
+        if (event.key === "ArrowDown") {
+            this.changeBpm(this.viewModel.bpm - delta);
+        } else if (event.key === "ArrowUp") {
+            this.changeBpm(this.viewModel.bpm + delta);
+        }
+    }
+    document.addEventListener('keydown', changeBpmOnKey.bind(this));
 };
 
 function initSynth(audioCtx) {
@@ -354,19 +373,38 @@ function perBeat(audio, synthSequence, drumSequence, beatIndex) {
 }
 
 // JamModel method
-function togglePlayPause() {
+function stop() {
+    if (this.playback.playIntervalId !== null) {
+        window.clearInterval(this.playback.playIntervalId);
+        this.playback.playIntervalId = null;
+        this.playback.beatIndex = 0;
+        this.stateChange(
+            -1, this.synthSequence, this.drumSequence, this.playback.bpm);
+    }
+}
+
+// JamModel method
+function pause() {
+    if (this.playback.playIntervalId !== null) {
+        window.clearInterval(this.playback.playIntervalId);
+        this.playback.playIntervalId = null;
+        this.stateChange(
+            -1, this.synthSequence, this.drumSequence, this.playback.bpm);
+    }
+}
+
+// JamModel method
+function play() {
     // If we are still waiting for audio to load, don't start
     // playback.
     if (this.audio === null) {
         return;
     }
+
     if (this.playback.playIntervalId !== null) {
-        window.clearInterval(this.playback.playIntervalId);
-        this.playback.playIntervalId = null;
-        this.playback.beatIndex = 0;
-        this.stateChange(-1, this.synthSequence, this.drumSequence);
         return;
     }
+
     const ticksPerBeat = (1 / this.playback.bpm) * 60 * 1000;
     // By default, setInterval doesn't invoke the function for the
     // first time until after the interval duration; we want
@@ -375,7 +413,8 @@ function togglePlayPause() {
     perBeat(this.audio, this.synthSequence, this.drumSequence,
             this.playback.beatIndex);
     this.stateChange(this.playback.beatIndex,
-                     this.synthSequence, this.drumSequence);
+                     this.synthSequence, this.drumSequence,
+                     this.playback.bpm);
     let beatFn = function beatFn() {
         // We have to increment the beatIndex right at the
         // beginning of the "iteration" because other parts
@@ -389,12 +428,30 @@ function togglePlayPause() {
             this.synthSequence.length;
         this.stateChange(this.playback.beatIndex,
                          this.synthSequence,
-                         this.drumSequence);
+                         this.drumSequence,
+                         this.playback.bpm);
         perBeat(this.audio, this.synthSequence, this.drumSequence,
                 this.playback.beatIndex);
     };
     this.playback.playIntervalId =
         window.setInterval(beatFn.bind(this), /*delay=*/ticksPerBeat);
+}
+
+// JamModel method
+function togglePlayPause() {
+    if (this.playback.playIntervalId === null) {
+        play.bind(this)();
+    } else {
+        stop.bind(this)();
+    }
+}
+
+// JamModel method
+function changeBpm(newBpm) {
+    console.log("new bpm: " + newBpm);
+    pause.bind(this)();
+    this.playback.bpm = newBpm;
+    play.bind(this)();
 }
 
 function openSocket() {
@@ -430,7 +487,8 @@ function updateStateFromSocketEvent(event) {
     this.stateChange(this.playback.playIntervalId === null
                      ? -1 : this.playback.beatIndex,
                      this.synthSequence,
-                     this.drumSequence);
+                     this.drumSequence,
+                     this.playback.bpm);
 }
 
 // Method of JamModel
@@ -453,21 +511,23 @@ let JamModel = function JamModel() {
         beatIndex: 0,
         bpm: 240,
     }
-    this.stateChange = function(beatIndex, synthSequence, drumSequence) { };
+    this.stateChange = function(beatIndex, synthSequence, drumSequence, bpm) { };
     this.togglePlayback = togglePlayPause.bind(this);
     this.sendStateToServer = function () { };
     this.updateSynthSequence = function updateSynthSequence(beatIx, noteIx) {
         this.synthSequence[beatIx] = noteIx;
         this.stateChange(this.playback.playIntervalId === null
                          ? -1 : this.playback.beatIndex,
-                         this.synthSequence, this.drumSequence);
+                         this.synthSequence, this.drumSequence,
+                         this.playback.bpm);
         this.sendStateToServer();
     }
     this.updateDrumSequence = function updateDrumSequence(beatIx, noteIx) {
         this.drumSequence[beatIx] = noteIx;
         this.stateChange(this.playback.playIntervalId === null
                          ? -1 : this.playback.beatIndex,
-                         this.synthSequence, this.drumSequence);
+                         this.synthSequence, this.drumSequence,
+                         this.playback.bpm);
         this.sendStateToServer();
     }
 
@@ -479,7 +539,8 @@ let JamModel = function JamModel() {
     this.forceStateUpdate = function forceStateUpdate() {
         this.stateChange(this.playback.playIntervalId === null
                          ? -1 : this.playback.beatIndex,
-                         this.synthSequence, this.drumSequence);
+                         this.synthSequence, this.drumSequence,
+                         this.playback.bpm);
     };
 
     openSocket().then(onSocketOpen.bind(this),
@@ -490,12 +551,14 @@ let jamModel = new JamModel();
 let jamView = new JamView(document.body);
 jamView.onClickUpdateSynthSequence = jamModel.updateSynthSequence.bind(jamModel);
 jamView.onClickUpdateDrumSequence = jamModel.updateDrumSequence.bind(jamModel);
+jamView.changeBpm = changeBpm.bind(jamModel);
 jamView.togglePlayback = jamModel.togglePlayback.bind(jamModel);
-jamModel.stateChange = function(beatIndex, synthSequence, drumSequence) {
+jamModel.stateChange = function(beatIndex, synthSequence, drumSequence, bpm) {
     let viewModel = {
         synthSequence: synthSequence,
         drumSequence: drumSequence,
         currentBeatIndex: beatIndex,
+        bpm: bpm
     };
     jamView.updateView(viewModel);
 };

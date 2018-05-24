@@ -1,4 +1,3 @@
-* Shared instruments that clients take turns controlling?
 * Enable varying # of beats per loop
 * Add more instruments
 * Improve UI
