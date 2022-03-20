@@ -1,0 +1,17 @@
+We already did pretty good work by getting this working, huh?
+
+So what's the first thing we wanna do? Probably deprioritize UI things for now. just adding more functionality.
++ polyphony
++ more knobs
+
+Polyphony might be a big one because all the instruments need it. OKAY let's figure this out.
+
+Fuckkkkk we've have to redo a bunch of the stuff we did for seq-break. I wonder if we should try to copy some of that. Like the polyphonic sequences.
+
+....or should we start talking about MIDI? NOPE NOPE NOPE NOPE NOPE
+
+Ai yai yai I should really think about bringing in my sound code from seq-break...
+
+goddddd I don't know. Why did it have to be such a dilemma so early?!?!?!?!
+
+DOOOOOOOOOOPE!!!!!!!!!!!!!! We did a real fuckin thing. let's drive, bitches.

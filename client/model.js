@@ -1,76 +1,4 @@
-function initSynth(audioCtx) {
-    let osc = audioCtx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(440, audioCtx.currentTime);
-    gainNode = audioCtx.createGain();
-    gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-    osc.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    osc.start();
-    return {
-        osc: osc,
-        gain: gainNode
-    };
-}
-
-function getSoundData(filename) {
-    return new Promise(function(resolve, reject) {
-        let request = new XMLHttpRequest();
-        request.open(
-            'GET', 'http://' + window.location.hostname + ":2794/" + filename);
-        request.responseType = 'arraybuffer';
-        request.onload = function() {
-            resolve(request.response);
-        }
-        request.onerror = function() {
-            reject(request.statusText);
-        }
-        request.send();
-    });
-}
-
-function initSound() {
-    let soundNames = ['kick', 'snare'];
-    let sounds = soundNames.map(function(soundName) {
-        return getSoundData(soundName + '.wav')
-    });
-    let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    return Promise.all(sounds).then(function(loadedSounds) {
-        return Promise.all(loadedSounds.map(function(loadedSound) {
-            return audioCtx.decodeAudioData(loadedSound);
-        }));
-    }).then(function(decodedSounds) {
-        return {
-            audioCtx: audioCtx,
-            drumSounds: decodedSounds,
-            synth: initSynth(audioCtx)
-        }
-    });
-}
-
-function playSoundFromBuffer(audioCtx, buffer) {
-    let source = audioCtx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(audioCtx.destination);
-    source.start(0);
-}
-
-const BASE_FREQS = [
-    55.0000, // A
-    58.2705, // A#
-    61.7354, // B
-    65.4064, // C
-    69.2957, // C#
-    73.4162, // D
-    77.7817, // D#
-    82.4069, // E
-    87.3071, // F
-    92.4986, // F#
-    97.9989, // G
-    103.826, // G#
-];
-
-// Maximum note index is arbitrarily 70. Who cares.
+// // Maximum note index is arbitrarily 70. Who cares.
 const MAX_NOTE_INDEX = 70;
 
 function noteFrequency(note_ix) {
@@ -85,12 +13,13 @@ function noteFrequency(note_ix) {
 function perBeat(audio, synthSequence, drumSequence, beatIndex) {
     const noteIx = synthSequence[beatIndex];
     if (noteIx >= 0) {
-        audio.synth.osc.frequency.setValueAtTime(
-            noteFrequency(noteIx), audio.audioCtx.currentTime);
-        audio.synth.gain.gain.linearRampToValueAtTime(
-            1, audio.audioCtx.currentTime + 0.01);
-        audio.synth.gain.gain.linearRampToValueAtTime(
-            0, audio.audioCtx.currentTime + 0.1);
+        synthPlayVoice(audio.synths[0], /*voiceIdx=*/0, noteFrequency(noteIx), /*sustain=*/false, audio.audioCtx);
+        // audio.synth.osc.frequency.setValueAtTime(
+        //     noteFrequency(noteIx), audio.audioCtx.currentTime);
+        // audio.synth.gain.gain.linearRampToValueAtTime(
+        //     1, audio.audioCtx.currentTime + 0.01);
+        // audio.synth.gain.gain.linearRampToValueAtTime(
+        //     0, audio.audioCtx.currentTime + 0.1);
     }
 
     const drumIx = drumSequence[beatIndex];
