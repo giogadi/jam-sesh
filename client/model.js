@@ -1,5 +1,9 @@
-// // Maximum note index is arbitrarily 70. Who cares.
+// Maximum note index is arbitrarily 70. Who cares.
 const MAX_NOTE_INDEX = 70;
+
+const NUM_BEATS = 16;
+const NUM_SYNTH_VOICES = 2;
+const NUM_DRUM_VOICES = 2;
 
 function noteFrequency(note_ix) {
     if (note_ix > MAX_NOTE_INDEX || note_ix < 0) {
@@ -11,23 +15,19 @@ function noteFrequency(note_ix) {
 }
 
 function perBeat(audio, synthSequence, drumSequence, beatIndex) {
-    const noteIx = synthSequence[beatIndex];
-    if (noteIx >= 0) {
-        synthPlayVoice(audio.synths[0], /*voiceIdx=*/0, noteFrequency(noteIx), /*sustain=*/false, audio.audioCtx);
-        // audio.synth.osc.frequency.setValueAtTime(
-        //     noteFrequency(noteIx), audio.audioCtx.currentTime);
-        // audio.synth.gain.gain.linearRampToValueAtTime(
-        //     1, audio.audioCtx.currentTime + 0.01);
-        // audio.synth.gain.gain.linearRampToValueAtTime(
-        //     0, audio.audioCtx.currentTime + 0.1);
-    }
+    const notes = synthSequence[beatIndex];
+    let freqs = notes.filter(n => n >= 0).map(n => noteFrequency(n));
+    synthPlayVoices(audio.synths[0], freqs, audio.audioCtx);
 
-    const drumIx = drumSequence[beatIndex];
-    if (drumIx >= 0) {
-        if (drumIx >= audio.drumSounds.length) {
-            throw "ERROR: bad drum ix " + drumIx;
+    for (let voiceIx = 0; voiceIx < NUM_DRUM_VOICES; ++voiceIx) {
+        const soundIx = drumSequence[beatIndex][voiceIx];
+        if (soundIx < 0) {
+            continue;
         }
-        playSoundFromBuffer(audio.audioCtx, audio.drumSounds[drumIx]);
+        if (soundIx >= audio.drumSounds.length) {
+            throw "ERROR: bad sound ix " + soundIx;
+        }
+        playSoundFromBuffer(audio.audioCtx, audio.drumSounds[soundIx]);
     }
 }
 
@@ -158,6 +158,40 @@ function onSocketOpen(socket) {
     socket.onmessage = updateStateFromSocketEvent.bind(this);
 }
 
+// Method of JamModel
+function updateSequence(sequenceIx, beatIx, noteIx) {
+    let sequence = [];
+    if (sequenceIx === 0) {
+        sequence = this.synthSequence;
+    } else if (sequenceIx === 1) {
+        sequence = this.drumSequence;
+    } else {
+        throw "unexpected sequence ix";
+    }
+    // Looking for if this note is already active. If so, deactivate it.
+    let changed = false;
+    let numVoices = sequence[0].length;
+    for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
+        if (sequence[beatIx][voiceIx] === noteIx) {
+            sequence[beatIx][voiceIx] = -1;
+            changed = true;
+            break;
+        }
+        if (sequence[beatIx][voiceIx] === -1) {
+            sequence[beatIx][voiceIx] = noteIx;
+            changed = true;
+            break;
+        }
+    }
+    if (changed) {
+        this.stateChange(this.playback.playIntervalId === null
+            ? -1 : this.playback.beatIndex,
+            this.synthSequence, this.drumSequence,
+            this.playback.bpm);
+        this.sendStateToServer();
+    }
+}
+
 let JamModel = function JamModel() {
     let setAudio = function setAudio(audio) {
         this.audio = audio;
@@ -173,27 +207,20 @@ let JamModel = function JamModel() {
     this.stateChange = function(beatIndex, synthSequence, drumSequence, bpm) { };
     this.togglePlayback = togglePlayPause.bind(this);
     this.sendStateToServer = function () { };
-    this.updateSynthSequence = function updateSynthSequence(beatIx, noteIx) {
-        this.synthSequence[beatIx] = noteIx;
-        this.stateChange(this.playback.playIntervalId === null
-                         ? -1 : this.playback.beatIndex,
-                         this.synthSequence, this.drumSequence,
-                         this.playback.bpm);
-        this.sendStateToServer();
-    }
-    this.updateDrumSequence = function updateDrumSequence(beatIx, noteIx) {
-        this.drumSequence[beatIx] = noteIx;
-        this.stateChange(this.playback.playIntervalId === null
-                         ? -1 : this.playback.beatIndex,
-                         this.synthSequence, this.drumSequence,
-                         this.playback.bpm);
-        this.sendStateToServer();
-    }
+    this.updateSynthSequence = updateSequence.bind(this, 0);
+    this.updateDrumSequence = updateSequence.bind(this, 1);
 
-    const NUM_BEATS = 16;
     for (let i = 0; i < NUM_BEATS; i++) {
-        this.synthSequence.push(-1);
-        this.drumSequence.push(-1);
+        let initSynthNotes = [];        
+        for (let j = 0; j < NUM_SYNTH_VOICES; ++j) {
+            initSynthNotes.push(-1);
+        }
+        this.synthSequence.push(initSynthNotes);
+        let initDrumNotes = [];
+        for (let j = 0; j < NUM_DRUM_VOICES; ++j) {
+            initDrumNotes.push(-1);
+        }        
+        this.drumSequence.push(initDrumNotes);
     }
     this.forceStateUpdate = function forceStateUpdate() {
         this.stateChange(this.playback.playIntervalId === null

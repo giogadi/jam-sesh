@@ -1,4 +1,5 @@
 * Enable varying # of beats per loop
+* Add a flag to disable all networking (i.e., local client only)
 * Add more sounds
   * Bass
   * pads

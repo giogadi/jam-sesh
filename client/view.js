@@ -35,17 +35,20 @@ function drawSequence(
                        beatSize * numBeats, beatSize * numNotes);
     // Now draw the active beats on the appropriate note row.
     context2d.fillStyle = 'rgb(200, 0, 0)';
+    let numVoices = sequence[0].length;
     for (let beatIx = 0; beatIx < numBeats; beatIx++) {
-        if (sequence[beatIx] < 0) {
-            continue;
+        for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
+            if (sequence[beatIx][voiceIx] < 0) {
+                continue;
+            }
+            const noteIx = sequence[beatIx][voiceIx];
+            const cellIx = noteIndexToCellIndexFn(noteIx);
+            const cellRow = (numNotes - 1) - cellIx;
+            context2d.fillRect(
+                startX + beatIx * beatSize,
+                startY + cellRow * beatSize,
+                beatSize, beatSize);
         }
-        const noteIx = sequence[beatIx];
-        const cellIx = noteIndexToCellIndexFn(noteIx);
-        const cellRow = (numNotes - 1) - cellIx;
-        context2d.fillRect(
-            startX + beatIx * beatSize,
-            startY + cellRow * beatSize,
-            beatSize, beatSize);
     }
     // If playback is on, we highlight the current beat in green.
     if (currentBeatIndex >= 0) {
@@ -133,11 +136,7 @@ function onSequencerClick(x, y, beatSize, numBeats, numNotes,
     }
     const beatIx = cell.col;
     const noteIx = cellToNoteFn(cell.row);
-    if (sequence[beatIx] === noteIx) {
-        updateSequenceFn(beatIx, -1);
-    } else {
-        updateSequenceFn(beatIx, noteIx);
-    }
+    updateSequenceFn(beatIx, noteIx);
 }
 
 function onCanvasClick(event, canvas, numNotes, numDrums,

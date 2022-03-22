@@ -161,6 +161,12 @@ function initSound() {
                         osc2Type: 'sawtooth',
                         osc2Gain: 0.5,
                         osc2Detune: 50
+                    },
+                    {
+                        osc1Type: 'square',
+                        osc2Type: 'sawtooth',
+                        osc2Gain: 0.5,
+                        osc2Detune: 50
                     }
                 ]
             },

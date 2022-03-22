@@ -14,4 +14,30 @@ Ai yai yai I should really think about bringing in my sound code from seq-break.
 
 goddddd I don't know. Why did it have to be such a dilemma so early?!?!?!?!
 
-DOOOOOOOOOOPE!!!!!!!!!!!!!! We did a real fuckin thing. let's drive, bitches.
+So the next thing is to look at the sequence logic and see if we can make the synth polyphonic.
+
+Were we _ever_ doing properly polyphonic sequences? Maybe not?
+
+Maybe _for now_ we ignore slur/legato and just get things to work? We _don't_ want something like ableton. We'll just have a little legato row, who cares.
+
+So each beat has a list of values. Maybe a list of known max length (equal to number of voices, obv).
+
+Oh right: gotta remember that, if we change the sequence data struct, we gotta update what we send over the network too. Let's see what that looks like?
+
+Let's maybe test that polyphony even works? Let's initialize a 2-voice synthesizer and play 2 notes for every one on the sequencer. NICE, it really does work. That's so dope. All we need to do then is to play the map and map the plays.
+
+Now THERE is a difficult question: how do we decide which voice to use? Maybe easier to just set the whole thing blegh
+
+IT FUCKIN WORKS!!!!!!!!!!!!!!!! Wow, that's a big deal. Great job asshole. Let's play some video games I guess.
+
+Now we want to get this to a place where we can submit it. What poopoo have I done? Do I need polyphony or whatever for the drum sequencer?
+
+Ideally, we'd go through each sequence one-by-one doing roughly the same thing. Each sequence update would know about how many voices its instrument has.
+
+Can the drum synth play more than one sound at once? I think the answer is YES!
+
+Try to avoid hardcoding shit if possible.
+
+What if the first connection tells the server what the initial state should be?
+
+Or _actually_ - the SERVER should be telling the CLIENT what is going on, right? Also, we want a headless version don't we? Whatever, just get something submittable for now, okay? We can worry about the weird server shit later, I guess. Or we do something weird like codegen to make them the same. ugh gross.
