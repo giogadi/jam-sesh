@@ -49,8 +49,9 @@ const NOTES = {
     G_F: 9,
     G: 10,
     G_S: 11,
-    A_F: 11
+    A_F: 11,
 };
+const NUM_CHROMATIC_NOTES = 12;
 
 function getFreq(note, octave) {
     return BASE_FREQS[note] * (1 << octave);

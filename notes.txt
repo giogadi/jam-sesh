@@ -41,3 +41,59 @@ Try to avoid hardcoding shit if possible.
 What if the first connection tells the server what the initial state should be?
 
 Or _actually_ - the SERVER should be telling the CLIENT what is going on, right? Also, we want a headless version don't we? Whatever, just get something submittable for now, okay? We can worry about the weird server shit later, I guess. Or we do something weird like codegen to make them the same. ugh gross.
+
+Let's ignore the scrollbar conversation for now. Just assume we are only visualizing a slice.
+ 0 1  2 3  4 5 6  7 8  9 10 11 12
+ C C# D D# E F F# G G# A A# B  C
+
+ C D  E G  A C
+ 0 2  4 7  9 12
+
+ Oh it's so easy! We just need an array of indices for the root-relative notes.
+
+ Let's say that sequencer view just passes the "clicked index", maybe? that was model can figure out what actual note index it is.
+
+ But view is currently partially responsible for things. let's make it unresponsible then.
+
+
+ The INPUT is the original index.
+
+ A A# B C C# D D# E F F# G G# A A# B C C# D D# E F F# G G# A A# B  C C# D D# E F F# G G# A A# B  C C# D D# E F F# G G# A A# B  C
+ 2 3  4 2  3 4 2  3 4  2 3  4
+ C D  E C  D E C  D E  C D  E
+
+ O: 3
+ N: 1 -> 2
+
+What is a note index?
+A is our root note.
+
+Ok NOW let's assume that the bottom note of a scale is always 0 <= scale[0] <= 11.
+
+FORGET IT. ASSUME 0 IS ALWAYS BOTTOM, WE'LL FIX IT IN POST
+
+Shit, well we gotta do _some_ conversion on the View side because isn't that how we decide which notes will light up the synth?
+
+ooooooh right, the OFFSET!! remove it for now. This is very interesting indeed. need different default view offsets for each scale. can get it automatically by always starting on the same absolute note or octave.
+
+omfg this is gonna be so goddamn dope holy shit. Now all we need to do is get the view to show the right thing.
+
+We need to go from noteIx to cellIx. God wait, wtf was I doing? Do I really need to do this?
+
+Wait a minute: what if the sequencer only/also stored for each sequence element: the index into the scale
+
+wtf something feels really fishy here, doesn't it? Ohhhh I get it now. Yeah no idk if I want to do that.
+
+Oh LORDDDDDDD we have a lot of work to do.
+
+So how do we make JamModel aware of how it should convert things?
+
+This is _seriously_ a fascinating problem, holy shit. We really went somewhere.
+
+SUMMARY: We are trying to draw the new scale-ified sequences correctly. We might be able to do this if the ViewModel's sequence is not actually a seq of notes, but rather a seq of...... cell indices????? Maybe.
+
+Let's keep the conversion to a minimum in view, then. send over converted shit.
+
+We *JUST* added polyphony, bro. multiple notes per sequence element.
+
+HOLY SHIIIIIIIT IT WORKS!!!!!! Let's submit this bitch. It's gross but it'll do for now.

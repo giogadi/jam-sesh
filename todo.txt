@@ -1,5 +1,12 @@
 * Enable varying # of beats per loop
+* Make BPM global.
 * Add a flag to disable all networking (i.e., local client only)
+* enable changing musical scale of sequencer
+  ? What happens if you change the scale while there are already notes there?
+    O1 Clear any notes that don't belong on the new scale
+    O2 move all notes to the closest note in the new scale <-- maybe better, but will take longer.
+  ? Should musical scale be only local UI or should it be a global setting?
+    * global makes more sense, because you don't want 2 users programming different scales on it.
 * Add more sounds
   * Bass
   * pads

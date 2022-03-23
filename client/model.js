@@ -5,6 +5,14 @@ const NUM_BEATS = 16;
 const NUM_SYNTH_VOICES = 2;
 const NUM_DRUM_VOICES = 2;
 
+const eScale = {
+    Chromatic: 0,
+    Pentatonic: 1
+};
+
+const CHROMATIC_SCALE_OFFSETS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+const PENTATONIC_SCALE_OFFSETS = [0, 2, 4, 7, 9];
+
 function noteFrequency(note_ix) {
     if (note_ix > MAX_NOTE_INDEX || note_ix < 0) {
         throw "invalid note index (" + note_ix + ")";
@@ -12,6 +20,41 @@ function noteFrequency(note_ix) {
     const base_freq_ix = note_ix % BASE_FREQS.length;
     const num_octaves_above = Math.floor(note_ix / BASE_FREQS.length);
     return BASE_FREQS[base_freq_ix] * (1 << num_octaves_above);
+}
+
+function getScaleNotes(scale) {
+    switch (scale) {
+        case eScale.Chromatic:
+            return CHROMATIC_SCALE_OFFSETS;
+        case eScale.Pentatonic:
+            return PENTATONIC_SCALE_OFFSETS;
+    }
+}
+
+function fromCellIxToNoteIx(currentScale, cellIx) {
+    let currentScaleOffsets = getScaleNotes(currentScale);
+    let ixIntoCurrentScale = cellIx % currentScaleOffsets.length;
+    let currentOctave = Math.trunc(cellIx / currentScaleOffsets.length) + 2;
+    return currentOctave * CHROMATIC_SCALE_OFFSETS.length + currentScaleOffsets[ixIntoCurrentScale];
+}
+
+// LOOK: we're still assuming that 0 = A for now, okay. keep it simple.
+// Assume that the noteIx corresponds to an entry of Chromatic Scale (after modulo 12).
+// So you can get the octave easily. Then you find the note in the current scale by brute force (ugh).
+
+// TODO: what if each sequence element was just the index into the scale array AND octave?
+// Sure, for chromatic it's the same thing. but not so for other scales.
+// So to get the final note you need scale, octave, and (maybe) root?
+function fromNoteIxToCellIx(currentScale, noteIx) {
+    let octave = Math.trunc(noteIx / NUM_CHROMATIC_NOTES) - 2;
+    let ixIntoChromaticScale = noteIx % NUM_CHROMATIC_NOTES
+    let currentScaleNotes = getScaleNotes(currentScale);
+    for (let scaleNoteIx = 0; scaleNoteIx < currentScaleNotes.length; ++scaleNoteIx) {
+        if (currentScaleNotes[scaleNoteIx] === ixIntoChromaticScale) {
+            return octave * currentScaleNotes.length + scaleNoteIx;
+        }
+    }
+    throw "note " + noteIx + " not in this scale";
 }
 
 function perBeat(audio, synthSequence, drumSequence, beatIndex) {
@@ -38,7 +81,7 @@ function stop() {
         this.playback.playIntervalId = null;
         this.playback.beatIndex = 0;
         this.stateChange(
-            -1, this.synthSequence, this.drumSequence, this.playback.bpm);
+            -1, this.synthSequence, this.drumSequence, this.playback.bpm, this.currentScale);
     }
 }
 
@@ -48,7 +91,7 @@ function pause() {
         window.clearInterval(this.playback.playIntervalId);
         this.playback.playIntervalId = null;
         this.stateChange(
-            -1, this.synthSequence, this.drumSequence, this.playback.bpm);
+            -1, this.synthSequence, this.drumSequence, this.playback.bpm, this.currentScale);
     }
 }
 
@@ -73,7 +116,7 @@ function play() {
             this.playback.beatIndex);
     this.stateChange(this.playback.beatIndex,
                      this.synthSequence, this.drumSequence,
-                     this.playback.bpm);
+                     this.playback.bpm, this.currentScale);
     let beatFn = function beatFn() {
         // We have to increment the beatIndex right at the
         // beginning of the "iteration" because other parts
@@ -88,7 +131,8 @@ function play() {
         this.stateChange(this.playback.beatIndex,
                          this.synthSequence,
                          this.drumSequence,
-                         this.playback.bpm);
+                         this.playback.bpm,
+                         this.currentScale);
         perBeat(this.audio, this.synthSequence, this.drumSequence,
                 this.playback.beatIndex);
     };
@@ -147,7 +191,8 @@ function updateStateFromSocketEvent(event) {
                      ? -1 : this.playback.beatIndex,
                      this.synthSequence,
                      this.drumSequence,
-                     this.playback.bpm);
+                     this.playback.bpm,
+                     this.currentScale);
 }
 
 // Method of JamModel
@@ -159,15 +204,24 @@ function onSocketOpen(socket) {
 }
 
 // Method of JamModel
-function updateSequence(sequenceIx, beatIx, noteIx) {
+function updateSequence(sequenceIx, beatIx, cellIx) {
     let sequence = [];
+    let noteIx = -1;
     if (sequenceIx === 0) {
         sequence = this.synthSequence;
+        // Convert cell ix to a note ix.
+        // This assumes that the first note in a scale is always 0 (A).
+        let currentScaleOffsets = getScaleNotes(this.currentScale);
+        let ixIntoCurrentScale = cellIx % currentScaleOffsets.length;
+        let currentOctave = Math.trunc(cellIx / currentScaleOffsets.length) + 2;
+        noteIx = currentOctave * CHROMATIC_SCALE_OFFSETS.length + currentScaleOffsets[ixIntoCurrentScale];
     } else if (sequenceIx === 1) {
         sequence = this.drumSequence;
+        noteIx = cellIx;
     } else {
         throw "unexpected sequence ix";
     }
+
     // Looking for if this note is already active. If so, deactivate it.
     let changed = false;
     let numVoices = sequence[0].length;
@@ -187,7 +241,7 @@ function updateSequence(sequenceIx, beatIx, noteIx) {
         this.stateChange(this.playback.playIntervalId === null
             ? -1 : this.playback.beatIndex,
             this.synthSequence, this.drumSequence,
-            this.playback.bpm);
+            this.playback.bpm, this.currentScale);
         this.sendStateToServer();
     }
 }
@@ -204,11 +258,13 @@ let JamModel = function JamModel() {
         beatIndex: 0,
         bpm: 240,
     }
-    this.stateChange = function(beatIndex, synthSequence, drumSequence, bpm) { };
+    this.stateChange = function(beatIndex, synthSequence, drumSequence, bpm, scale) { };
     this.togglePlayback = togglePlayPause.bind(this);
     this.sendStateToServer = function () { };
     this.updateSynthSequence = updateSequence.bind(this, 0);
     this.updateDrumSequence = updateSequence.bind(this, 1);
+
+    this.currentScale = eScale.Pentatonic;
 
     for (let i = 0; i < NUM_BEATS; i++) {
         let initSynthNotes = [];        
@@ -226,7 +282,7 @@ let JamModel = function JamModel() {
         this.stateChange(this.playback.playIntervalId === null
                          ? -1 : this.playback.beatIndex,
                          this.synthSequence, this.drumSequence,
-                         this.playback.bpm);
+                         this.playback.bpm, this.currentScale);
     };
 
     openSocket().then(onSocketOpen.bind(this),

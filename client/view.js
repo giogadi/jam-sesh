@@ -79,7 +79,7 @@ function drawSequence(
 
 // TODO: All these cell-note conversions should probably be part of
 // the View's state (so that we can have scrollbars and shit)
-const SYNTH_NOTE_OFFSET = 24;
+const SYNTH_NOTE_OFFSET = 0;
 function synthCellIndexToNoteIndex(cellIndex) {
     return cellIndex + SYNTH_NOTE_OFFSET;
 }
