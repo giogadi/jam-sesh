@@ -16,17 +16,20 @@ use websocket::OwnedMessage;
 struct ClientId(usize);
 
 type NoteIndex = i32;
+type ScaleType = i32;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct State {
     synth_sequence: Vec<Vec<NoteIndex>>,
     drum_sequence: Vec<Vec<NoteIndex>>,
+    scale: ScaleType
 }
 impl State {
     fn new(num_beats: usize) -> State {
         let mut state = State {
             synth_sequence: vec![vec![-1; 2]; num_beats],
             drum_sequence: vec![vec![-1; 2]; num_beats],
+            scale: 0
         };
         let default_note_ix = 24;
         for (ix, notes) in state.synth_sequence.iter_mut().enumerate() {

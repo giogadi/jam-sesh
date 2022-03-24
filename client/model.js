@@ -171,10 +171,11 @@ function openSocket() {
     });
 }
 
-function sendStateToSocket(socket, synthSequence, drumSequence) {
+function sendStateToSocket(socket, jamModel) {
     let stateMsg = {
-        synth_sequence: synthSequence,
-        drum_sequence: drumSequence,
+        synth_sequence: jamModel.synthSequence,
+        drum_sequence: jamModel.drumSequence,
+        scale: jamModel.currentScale
     };
     const stateMsgStr = JSON.stringify(stateMsg);
     socket.send(stateMsgStr);
@@ -187,6 +188,7 @@ function updateStateFromSocketEvent(event) {
     console.log("Received message " + JSON.stringify(update));
     this.synthSequence = update.synth_sequence.slice();
     this.drumSequence = update.drum_sequence.slice();
+    this.currentScale = update.scale;
     this.stateChange(this.playback.playIntervalId === null
                      ? -1 : this.playback.beatIndex,
                      this.synthSequence,
@@ -198,7 +200,7 @@ function updateStateFromSocketEvent(event) {
 // Method of JamModel
 function onSocketOpen(socket) {
     this.sendStateToServer = function () {
-        sendStateToSocket(socket, this.synthSequence, this.drumSequence);
+        sendStateToSocket(socket, this);
     }
     socket.onmessage = updateStateFromSocketEvent.bind(this);
 }
@@ -246,6 +248,31 @@ function updateSequence(sequenceIx, beatIx, cellIx) {
     }
 }
 
+// Method of JamModel
+function scaleChanged(newScale) {
+    console.log("scale changed! " + newScale);
+    this.currentScale = newScale;
+    let scaleNotes = getScaleNotes(this.currentScale);
+    // Go through and delete any notes that aren't part of the current scale.
+    for (let beatIx = 0; beatIx < this.synthSequence.length; ++beatIx) {
+        for (let voiceIx = 0; voiceIx < NUM_SYNTH_VOICES; ++voiceIx) {
+            let note = this.synthSequence[beatIx][voiceIx];
+            if (note < 0) {
+                continue;
+            }
+            let seqNoteAsScaleNote = note % NUM_CHROMATIC_NOTES;
+            if (!scaleNotes.includes(seqNoteAsScaleNote)) {
+                this.synthSequence[beatIx][voiceIx] = -1;
+            }
+        }
+    }
+    this.stateChange(this.playback.playIntervalId === null
+        ? -1 : this.playback.beatIndex,
+        this.synthSequence, this.drumSequence,
+        this.playback.bpm, this.currentScale);
+    this.sendStateToServer();
+}
+
 let JamModel = function JamModel() {
     let setAudio = function setAudio(audio) {
         this.audio = audio;
@@ -263,8 +290,9 @@ let JamModel = function JamModel() {
     this.sendStateToServer = function () { };
     this.updateSynthSequence = updateSequence.bind(this, 0);
     this.updateDrumSequence = updateSequence.bind(this, 1);
+    this.changeScale = scaleChanged.bind(this);
 
-    this.currentScale = eScale.Pentatonic;
+    this.currentScale = eScale.Chromatic;
 
     for (let i = 0; i < NUM_BEATS; i++) {
         let initSynthNotes = [];        

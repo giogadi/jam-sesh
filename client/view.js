@@ -188,6 +188,13 @@ function drawInterface() {
                  drumNoteIndexToCellIndex);
 }
 
+// Method of JamView
+// TODO: is it cleaner to accept the event and get the new value from there?
+function onScaleDropDownChanged() {
+    console.log("onScaleDropDownChanged");
+    this.changeScale(parseInt(this.uiElements.scaleDropDown.value));
+}
+
 // NOTE TO SELF: this is a "named function expression".
 //
 // But why the fuck don't we just declare the function "normally"?
@@ -196,9 +203,11 @@ let JamView = function JamView(element) {
     this.onClickUpdateDrumSequence = s => {};
     this.togglePlayback = function() {};
     this.changeBpm = function(newBpm) {};
+    this.changeScale = function() {};
 
     this.uiElements = {
         playButton: null,
+        scaleDropDown: null,
         bpmLabel: null,
         canvas: null,
     };
@@ -211,6 +220,19 @@ let JamView = function JamView(element) {
         this.togglePlayback();
     };
     this.uiElements.playButton.onclick = play.bind(this);
+
+    // TODO: populate this dropdown automatically from model.
+    let scaleDropDown = document.createElement('select');
+    let chromaticItem = document.createElement('option');
+    chromaticItem.value = "0";
+    chromaticItem.text = "Chromatic";
+    scaleDropDown.appendChild(chromaticItem);
+    let pentatonicItem = document.createElement('option');
+    pentatonicItem.value = "1";
+    pentatonicItem.text = "Pentatonic";
+    scaleDropDown.appendChild(pentatonicItem);
+    scaleDropDown.onchange = onScaleDropDownChanged.bind(this);
+    this.uiElements.scaleDropDown = element.appendChild(scaleDropDown);
 
     this.uiElements.bpmLabel = element.appendChild(document.createElement('p'));
     this.uiElements.bpmLabel.innerHTML = "BPM: N/A";
@@ -234,8 +256,11 @@ let JamView = function JamView(element) {
         this.viewModel.drumSequence = newViewModel.drumSequence.slice();
         this.viewModel.currentBeatIndex = newViewModel.currentBeatIndex;
         this.viewModel.bpm = newViewModel.bpm;
+        this.viewModel.scale = newViewModel.scale;
+
         this.uiElements.bpmLabel.innerHTML =
             "BPM: " + newViewModel.bpm;
+        this.uiElements.scaleDropDown.selectedIndex = newViewModel.scale;
     }
 
     this.numNotes = 13;

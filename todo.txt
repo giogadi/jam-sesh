@@ -1,3 +1,6 @@
+* Put buttons and shit in the HTML, wtf dude?
+* Populate scale dropdown from model
+* update stateChange() to just take the jam model
 * Enable varying # of beats per loop
 * Make BPM global.
 * Add a flag to disable all networking (i.e., local client only)

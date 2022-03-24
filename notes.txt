@@ -97,3 +97,25 @@ Let's keep the conversion to a minimum in view, then. send over converted shit.
 We *JUST* added polyphony, bro. multiple notes per sequence element.
 
 HOLY SHIIIIIIIT IT WORKS!!!!!! Let's submit this bitch. It's gross but it'll do for now.
+
+So what were we doing? We just got scales working. Should we make it NETWORKED? cool ok. so we just need to send along the scale info.
+
+But why does Rust need to know anything about the messages anyway, actually? why doesn't it just forward the json string directly?
+
+Can we send just like one huge structure and have the function decide what to send over?
+
+wtf is stateChange again? Is it "redraw"? wtf? Can we not afford to redraw every frame?
+
+How do we change scale? Dropdown? Sure, whatever man.
+
+Wait a minute: what's supposed to happen if I change the scale? Lol that's a big question isn't it?
+
+Fuck, what does the sequencer store? frequencies or noteIx? Ok, seq stores noteIx's.
+
+Ok, sequencer stores the chromatic (raw) index from A0.
+
+omg. default scale isn't chromatic. what in the fuck? How did I miss this?!?!?!?!?!
+
+I think.....we fucking did it. wowza.
+
+_now_ I understand why I considered React. Fuck me.

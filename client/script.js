@@ -3,6 +3,7 @@ let jamView = new JamView(document.body);
 jamView.onClickUpdateSynthSequence = jamModel.updateSynthSequence.bind(jamModel);
 jamView.onClickUpdateDrumSequence = jamModel.updateDrumSequence.bind(jamModel);
 jamView.changeBpm = changeBpm.bind(jamModel);
+jamView.changeScale = scaleChanged.bind(jamModel);
 jamView.togglePlayback = jamModel.togglePlayback.bind(jamModel);
 jamModel.stateChange = function(beatIndex, synthSequence, drumSequence, bpm, scale) {
     let cellSequence = [];
@@ -23,7 +24,8 @@ jamModel.stateChange = function(beatIndex, synthSequence, drumSequence, bpm, sca
         synthSequence: cellSequence,
         drumSequence: drumSequence,
         currentBeatIndex: beatIndex,
-        bpm: bpm
+        bpm: bpm,
+        scale: scale
     };
     jamView.updateView(viewModel);
 };
