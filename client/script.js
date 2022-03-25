@@ -1,32 +1,39 @@
 let jamModel = new JamModel();
 let jamView = new JamView(document.body);
-jamView.onClickUpdateSynthSequence = jamModel.updateSynthSequence.bind(jamModel);
-jamView.onClickUpdateDrumSequence = jamModel.updateDrumSequence.bind(jamModel);
-jamView.changeBpm = changeBpm.bind(jamModel);
-jamView.changeScale = scaleChanged.bind(jamModel);
-jamView.togglePlayback = jamModel.togglePlayback.bind(jamModel);
-jamModel.stateChange = function(beatIndex, synthSequence, drumSequence, bpm, scale) {
+
+// method of JamModel
+function stateChange() {
     let cellSequence = [];
-    for (let i = 0; i < synthSequence.length; ++i) {
+    for (let i = 0; i < this.synthSequence.length; ++i) {
         let voices = [];
-        let numVoices = synthSequence[0].length;
+        let numVoices = this.synthSequence[0].length;
         for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
-            if (synthSequence[i][voiceIx] < 0) {
+            if (this.synthSequence[i][voiceIx] < 0) {
                 voices.push(-1);
             } else {
-                voices.push(fromNoteIxToCellIx(scale, synthSequence[i][voiceIx]));
+                voices.push(fromNoteIxToCellIx(this.currentScale, this.synthSequence[i][voiceIx]));
             }
         }
         cellSequence.push(voices);
     }
 
+    let beatIndex = this.playback.playIntervalId === null ? -1 : this.playback.beatIndex;
+
     let viewModel = {
         synthSequence: cellSequence,
-        drumSequence: drumSequence,
+        drumSequence: this.drumSequence,
         currentBeatIndex: beatIndex,
-        bpm: bpm,
-        scale: scale
+        bpm: this.playback.bpm,
+        scale: this.currentScale
     };
     jamView.updateView(viewModel);
-};
+}
+
+jamView.onClickUpdateSynthSequence = jamModel.updateSynthSequence.bind(jamModel);
+jamView.onClickUpdateDrumSequence = jamModel.updateDrumSequence.bind(jamModel);
+jamView.changeBpm = changeBpm.bind(jamModel);
+jamView.changeScale = scaleChanged.bind(jamModel);
+jamView.togglePlayback = jamModel.togglePlayback.bind(jamModel);
+jamModel.stateChange = stateChange.bind(jamModel);
+
 jamModel.forceStateUpdate();

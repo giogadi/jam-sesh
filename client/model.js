@@ -80,8 +80,7 @@ function stop() {
         window.clearInterval(this.playback.playIntervalId);
         this.playback.playIntervalId = null;
         this.playback.beatIndex = 0;
-        this.stateChange(
-            -1, this.synthSequence, this.drumSequence, this.playback.bpm, this.currentScale);
+        this.stateChange();
     }
 }
 
@@ -90,8 +89,7 @@ function pause() {
     if (this.playback.playIntervalId !== null) {
         window.clearInterval(this.playback.playIntervalId);
         this.playback.playIntervalId = null;
-        this.stateChange(
-            -1, this.synthSequence, this.drumSequence, this.playback.bpm, this.currentScale);
+        this.stateChange();
     }
 }
 
@@ -114,9 +112,7 @@ function play() {
     // manually invoke the playback function once.
     perBeat(this.audio, this.synthSequence, this.drumSequence,
             this.playback.beatIndex);
-    this.stateChange(this.playback.beatIndex,
-                     this.synthSequence, this.drumSequence,
-                     this.playback.bpm, this.currentScale);
+    this.stateChange();
     let beatFn = function beatFn() {
         // We have to increment the beatIndex right at the
         // beginning of the "iteration" because other parts
@@ -128,11 +124,7 @@ function play() {
         this.playback.beatIndex =
             (this.playback.beatIndex + 1) %
             this.synthSequence.length;
-        this.stateChange(this.playback.beatIndex,
-                         this.synthSequence,
-                         this.drumSequence,
-                         this.playback.bpm,
-                         this.currentScale);
+        this.stateChange();
         perBeat(this.audio, this.synthSequence, this.drumSequence,
                 this.playback.beatIndex);
     };
@@ -189,12 +181,7 @@ function updateStateFromSocketEvent(event) {
     this.synthSequence = update.synth_sequence.slice();
     this.drumSequence = update.drum_sequence.slice();
     this.currentScale = update.scale;
-    this.stateChange(this.playback.playIntervalId === null
-                     ? -1 : this.playback.beatIndex,
-                     this.synthSequence,
-                     this.drumSequence,
-                     this.playback.bpm,
-                     this.currentScale);
+    this.stateChange();
 }
 
 // Method of JamModel
@@ -240,10 +227,7 @@ function updateSequence(sequenceIx, beatIx, cellIx) {
         }
     }
     if (changed) {
-        this.stateChange(this.playback.playIntervalId === null
-            ? -1 : this.playback.beatIndex,
-            this.synthSequence, this.drumSequence,
-            this.playback.bpm, this.currentScale);
+        this.stateChange();
         this.sendStateToServer();
     }
 }
@@ -266,10 +250,7 @@ function scaleChanged(newScale) {
             }
         }
     }
-    this.stateChange(this.playback.playIntervalId === null
-        ? -1 : this.playback.beatIndex,
-        this.synthSequence, this.drumSequence,
-        this.playback.bpm, this.currentScale);
+    this.stateChange()
     this.sendStateToServer();
 }
 
@@ -285,7 +266,7 @@ let JamModel = function JamModel() {
         beatIndex: 0,
         bpm: 240,
     }
-    this.stateChange = function(beatIndex, synthSequence, drumSequence, bpm, scale) { };
+    this.stateChange = function() { };
     this.togglePlayback = togglePlayPause.bind(this);
     this.sendStateToServer = function () { };
     this.updateSynthSequence = updateSequence.bind(this, 0);
@@ -307,10 +288,7 @@ let JamModel = function JamModel() {
         this.drumSequence.push(initDrumNotes);
     }
     this.forceStateUpdate = function forceStateUpdate() {
-        this.stateChange(this.playback.playIntervalId === null
-                         ? -1 : this.playback.beatIndex,
-                         this.synthSequence, this.drumSequence,
-                         this.playback.bpm, this.currentScale);
+        this.stateChange();
     };
 
     openSocket().then(onSocketOpen.bind(this),
