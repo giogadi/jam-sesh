@@ -1,4 +1,3 @@
-* Fix the "click before enabling audio" thing
 * get the compute instance back up and running
 * Put buttons and shit in the HTML, wtf dude?
 * Populate scale dropdown from model
