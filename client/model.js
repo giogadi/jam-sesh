@@ -213,12 +213,16 @@ function updateSequence(sequenceIx, beatIx, cellIx) {
         if (sequence[beatIx][voiceIx] === noteIx) {
             sequence[beatIx][voiceIx] = -1;
             changed = true;
-            break;
         }
-        if (sequence[beatIx][voiceIx] === -1) {
-            sequence[beatIx][voiceIx] = noteIx;
-            changed = true;
-            break;
+    }
+    // If note was not already active in one of the voices, activate it.
+    if (!changed) {
+        for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
+            if (sequence[beatIx][voiceIx] === -1) {
+                sequence[beatIx][voiceIx] = noteIx;
+                changed = true;
+                break;
+            }
         }
     }
     if (changed) {
