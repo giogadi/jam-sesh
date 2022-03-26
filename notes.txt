@@ -119,3 +119,14 @@ omg. default scale isn't chromatic. what in the fuck? How did I miss this?!?!?!?
 I think.....we fucking did it. wowza.
 
 _now_ I understand why I considered React. Fuck me.
+
+let's either:
+(a) show more notes on the sequencer
+(b) enable changing octave
+(c) labeling the seq rows.
+
+Change octave first. NOT part of state!!!! This is a purely visual element. Let's try to keep it in viewmodel then?
+
+Oh but wtf dude COME ON, you can put LOCAL things in the MODEL.
+
+That's weird, right? We don't want to move over an entire page, huh. How do we calculate that?

@@ -34,7 +34,7 @@ function getScaleNotes(scale) {
 function fromCellIxToNoteIx(currentScale, cellIx) {
     let currentScaleOffsets = getScaleNotes(currentScale);
     let ixIntoCurrentScale = cellIx % currentScaleOffsets.length;
-    let currentOctave = Math.trunc(cellIx / currentScaleOffsets.length) + 2;
+    let currentOctave = Math.trunc(cellIx / currentScaleOffsets.length);
     return currentOctave * CHROMATIC_SCALE_OFFSETS.length + currentScaleOffsets[ixIntoCurrentScale];
 }
 
@@ -46,7 +46,7 @@ function fromCellIxToNoteIx(currentScale, cellIx) {
 // Sure, for chromatic it's the same thing. but not so for other scales.
 // So to get the final note you need scale, octave, and (maybe) root?
 function fromNoteIxToCellIx(currentScale, noteIx) {
-    let octave = Math.trunc(noteIx / NUM_CHROMATIC_NOTES) - 2;
+    let octave = Math.trunc(noteIx / NUM_CHROMATIC_NOTES);
     let ixIntoChromaticScale = noteIx % NUM_CHROMATIC_NOTES
     let currentScaleNotes = getScaleNotes(currentScale);
     for (let scaleNoteIx = 0; scaleNoteIx < currentScaleNotes.length; ++scaleNoteIx) {
@@ -198,12 +198,7 @@ function updateSequence(sequenceIx, beatIx, cellIx) {
     let noteIx = -1;
     if (sequenceIx === 0) {
         sequence = this.synthSequence;
-        // Convert cell ix to a note ix.
-        // This assumes that the first note in a scale is always 0 (A).
-        let currentScaleOffsets = getScaleNotes(this.currentScale);
-        let ixIntoCurrentScale = cellIx % currentScaleOffsets.length;
-        let currentOctave = Math.trunc(cellIx / currentScaleOffsets.length) + 2;
-        noteIx = currentOctave * CHROMATIC_SCALE_OFFSETS.length + currentScaleOffsets[ixIntoCurrentScale];
+        noteIx = fromCellIxToNoteIx(this.currentScale, cellIx);
     } else if (sequenceIx === 1) {
         sequence = this.drumSequence;
         noteIx = cellIx;
@@ -274,6 +269,7 @@ let JamModel = function JamModel() {
     this.changeScale = scaleChanged.bind(this);
 
     this.currentScale = eScale.Chromatic;
+    this.currentOctave = 0;
 
     for (let i = 0; i < NUM_BEATS; i++) {
         let initSynthNotes = [];        

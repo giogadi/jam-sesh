@@ -1,4 +1,5 @@
-* get the compute instance back up and running
+* Figure out why rust/web servers are dying on the remote VM
+* replace websocket library with something newer
 * Put buttons and shit in the HTML, wtf dude?
 * Populate scale dropdown from model
 * Enable varying # of beats per loop

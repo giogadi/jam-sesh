@@ -1,4 +1,4 @@
-function getGearDimensions(canvasRect, numBeats, numNotes, numDrums) {
+function getGearDimensions(canvasRect, numBeats, numNotesPerPage, numDrums) {
     const w = canvasRect.width;
     const h = canvasRect.height;
     const startX = 0;
@@ -6,10 +6,10 @@ function getGearDimensions(canvasRect, numBeats, numNotes, numDrums) {
     const spacing = 50;
 
     // Want startX + beatSize * numBeats <= w &&
-    // startY + numNotes*beatSize + spacing + numDrums*beatSize <= h.
+    // startY + numNotesPerPage*beatSize + spacing + numDrums*beatSize <= h.
     const beatSizeFromWidth = Math.floor((w - startX) / numBeats);
     const beatSizeFromHeight = Math.floor(
-        (h - startY - spacing) / (numNotes + numDrums));
+        (h - startY - spacing) / (numNotesPerPage + numDrums));
     const beatSize = Math.min(beatSizeFromWidth, beatSizeFromHeight);
     return {
         synthBeatSize: beatSize,
@@ -18,12 +18,12 @@ function getGearDimensions(canvasRect, numBeats, numNotes, numDrums) {
         spacing: spacing,
         drumBeatSize: beatSize,
         drumStartX: startX,
-        drumStartY: startY + numNotes * beatSize + spacing,
+        drumStartY: startY + numNotesPerPage * beatSize + spacing,
     };
 }
 
 function drawSequence(
-    context2d, startX, startY, numNotes, sequence, beatSize, currentBeatIndex,
+    context2d, startX, startY, numNotesPerPage, currentNotePage, sequence, beatSize, currentBeatIndex,
     noteIndexToCellIndexFn) {
     const numBeats = sequence.length;
     // Draw our beatboxes, where inactive beats are grey and active
@@ -32,7 +32,7 @@ function drawSequence(
     // First draw the gray inactive beats as one big rectangle.
     context2d.fillStyle = 'rgb(100, 100, 100)';
     context2d.fillRect(startX, startY,
-                       beatSize * numBeats, beatSize * numNotes);
+                       beatSize * numBeats, beatSize * numNotesPerPage);
     // Now draw the active beats on the appropriate note row.
     context2d.fillStyle = 'rgb(200, 0, 0)';
     let numVoices = sequence[0].length;
@@ -42,8 +42,12 @@ function drawSequence(
                 continue;
             }
             const noteIx = sequence[beatIx][voiceIx];
-            const cellIx = noteIndexToCellIndexFn(noteIx);
-            const cellRow = (numNotes - 1) - cellIx;
+            let cellIx = noteIndexToCellIndexFn(noteIx, currentNotePage, numNotesPerPage);
+            if (cellIx < 0 || cellIx >= numNotesPerPage) {
+                console.log ("HOWDY!!!");
+                continue;
+            }
+            const cellRow = (numNotesPerPage - 1) - cellIx;
             context2d.fillRect(
                 startX + beatIx * beatSize,
                 startY + cellRow * beatSize,
@@ -57,7 +61,7 @@ function drawSequence(
         context2d.fillRect(
             startX + currentBeatIndex * beatSize,
             startY,
-            beatSize, numNotes * beatSize);
+            beatSize, numNotesPerPage * beatSize);
     }
     // Finally, draw a grid to divide up the beats and notes.
     context2d.strokeStyle = 'rgb(0, 0, 0)';
@@ -65,10 +69,10 @@ function drawSequence(
         context2d.beginPath();
         const x = startX + lineIx * beatSize;
         context2d.moveTo(x, startY);
-        context2d.lineTo(x, startY + numNotes * beatSize);
+        context2d.lineTo(x, startY + numNotesPerPage * beatSize);
         context2d.stroke();
     }
-    for (let lineIx = 0; lineIx <= numNotes; lineIx++) {
+    for (let lineIx = 0; lineIx <= numNotesPerPage; lineIx++) {
         context2d.beginPath();
         const y = startY + lineIx * beatSize;
         context2d.moveTo(startX, y);
@@ -77,21 +81,13 @@ function drawSequence(
     }
 }
 
-// TODO: All these cell-note conversions should probably be part of
-// the View's state (so that we can have scrollbars and shit)
-const SYNTH_NOTE_OFFSET = 0;
-function synthCellIndexToNoteIndex(cellIndex) {
-    return cellIndex + SYNTH_NOTE_OFFSET;
-}
-function synthNoteIndexToCellIndex(noteIndex) {
-    return noteIndex - SYNTH_NOTE_OFFSET;
+function cellIxToNoteIx(cellIx, currentPage, numNotesPerPage) {
+    // NOTE: the -1 here is so that different pages always share one note on top and bottom.
+    return cellIx + currentPage * (numNotesPerPage - 1);
 }
 
-function drumCellIndexToNoteIndex(cellIndex) {
-    return cellIndex;
-}
-function drumNoteIndexToCellIndex(noteIndex) {
-    return noteIndex;
+function noteIxToCellIx(noteIx, currentPage, numNotesPerPage) {
+    return noteIx - currentPage * (numNotesPerPage - 1);
 }
 
 // With bottom-left cell index of (0,0) and (x=0,y=0) equal to top-left corner.
@@ -117,8 +113,8 @@ function getClickedCellIx(x, y, numRows, numCols, cellSize) {
     }
 }
 
-function onSequencerClick(x, y, beatSize, numBeats, numNotes,
-                          sequence,
+function onSequencerClick(x, y, beatSize, numBeats, numNotesPerPage,
+                          sequence, currentNotePage,
                           cellToNoteFn,
                           updateSequenceFn) {
     if (x < 0) {
@@ -129,34 +125,36 @@ function onSequencerClick(x, y, beatSize, numBeats, numNotes,
         // Too far up
         return;
     }
-    const cell = getClickedCellIx(x, y, numNotes, numBeats, beatSize);
+    const cell = getClickedCellIx(x, y, numNotesPerPage, numBeats, beatSize);
     console.log(x + " " + y + " " + JSON.stringify(cell));
     if (cell === null) {
         return;
     }
     const beatIx = cell.col;
-    const noteIx = cellToNoteFn(cell.row);
+    let noteIx = cellToNoteFn(cell.row, currentNotePage, numNotesPerPage);
     updateSequenceFn(beatIx, noteIx);
 }
 
-function onCanvasClick(event, canvas, numNotes, numDrums,
+function onCanvasClick(event, canvas, numNotesPerPage, currentNotePage, numDrums,
                        synthSequence, drumSequence,
                        updateSynthSequenceFn,
                        updateDrumSequenceFn) {
     const canvasRect = canvas.getBoundingClientRect();
     const gearDims = getGearDimensions(
-        canvasRect, synthSequence.length, numNotes, numDrums);
+        canvasRect, synthSequence.length, numNotesPerPage, numDrums);
     const x = (event.clientX - canvas.offsetLeft);
     const y = (event.clientY - canvas.offsetTop);
     onSequencerClick(x - gearDims.synthStartX, y - gearDims.synthStartY,
                      gearDims.synthBeatSize,
-                     synthSequence.length, numNotes, synthSequence,
-                     synthCellIndexToNoteIndex,
+                     synthSequence.length, numNotesPerPage, synthSequence,
+                     currentNotePage,
+                     cellIxToNoteIx,
                      updateSynthSequenceFn);
     onSequencerClick(x - gearDims.drumStartX, y - gearDims.drumStartY,
                      gearDims.drumBeatSize,
                      drumSequence.numBeats, numDrums, drumSequence,
-                     drumCellIndexToNoteIndex,
+                     currentNotePage,
+                     cellIxToNoteIx,
                      updateDrumSequenceFn);
 }
 
@@ -172,20 +170,21 @@ function drawInterface() {
     // TODO: we assume synth and drum sequence have same length here
     const gearDims =
           getGearDimensions(canvasRect, this.viewModel.synthSequence.length,
-                            this.numNotes, this.numDrums);
+                            this.numNotesPerPage, this.numDrums);
 
     // Synth sequencer
-    drawSequence(ctx, gearDims.synthStartX, gearDims.synthStartY, this.numNotes,
+    drawSequence(ctx, gearDims.synthStartX, gearDims.synthStartY, this.numNotesPerPage,
+                 this.currentNotePage,
                  this.viewModel.synthSequence, gearDims.synthBeatSize,
                  this.viewModel.currentBeatIndex,
-                 synthNoteIndexToCellIndex);
+                 noteIxToCellIx);
 
     // Drum sequencer
     drawSequence(ctx, gearDims.drumStartX, gearDims.drumStartY,
-                 this.numDrums,
+                 this.numDrums, /*currentNotePage=*/0,
                  this.viewModel.drumSequence, gearDims.drumBeatSize,
                  this.viewModel.currentBeatIndex,
-                 drumNoteIndexToCellIndex);
+                 noteIxToCellIx);
 }
 
 // Method of JamView
@@ -244,6 +243,8 @@ let JamView = function JamView(element) {
     canvas.setAttribute('height', '600');
     this.uiElements.canvas = element.appendChild(canvas);
 
+    this.currentNotePage = 2;
+
     this.viewModel = {
         synthSequence: [-1],
         drumSequence: [-1],
@@ -263,11 +264,12 @@ let JamView = function JamView(element) {
         this.uiElements.scaleDropDown.selectedIndex = newViewModel.scale;
     }
 
-    this.numNotes = 13;
+    this.numNotesPerPage = 13;
     this.numDrums = 2;
 
     let onClick = function onClick(event) {
-        onCanvasClick(event, this.uiElements.canvas, this.numNotes, this.numDrums,
+        onCanvasClick(event, this.uiElements.canvas, this.numNotesPerPage, this.currentNotePage,
+                      this.numDrums,
                       this.viewModel.synthSequence,
                       this.viewModel.drumSequence,
                       this.onClickUpdateSynthSequence,
