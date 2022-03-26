@@ -44,7 +44,6 @@ function drawSequence(
             const noteIx = sequence[beatIx][voiceIx];
             let cellIx = noteIndexToCellIndexFn(noteIx, currentNotePage, numNotesPerPage);
             if (cellIx < 0 || cellIx >= numNotesPerPage) {
-                console.log ("HOWDY!!!");
                 continue;
             }
             const cellRow = (numNotesPerPage - 1) - cellIx;
@@ -174,7 +173,7 @@ function drawInterface() {
 
     // Synth sequencer
     drawSequence(ctx, gearDims.synthStartX, gearDims.synthStartY, this.numNotesPerPage,
-                 this.currentNotePage,
+                 parseInt(this.uiElements.notePageInput.value),//this.currentNotePage,
                  this.viewModel.synthSequence, gearDims.synthBeatSize,
                  this.viewModel.currentBeatIndex,
                  noteIxToCellIx);
@@ -208,6 +207,8 @@ let JamView = function JamView(element) {
         playButton: null,
         scaleDropDown: null,
         bpmLabel: null,
+        notePageLabel: null,
+        notePageInput: null,
         canvas: null,
     };
 
@@ -238,12 +239,27 @@ let JamView = function JamView(element) {
 
     element.appendChild(document.createElement('br'));
 
+    // note page spinner
+    this.uiElements.notePageLabel = element.appendChild(document.createElement('label'));
+    this.uiElements.notePageLabel.htmlFor = 'note-page';
+    this.uiElements.notePageLabel.innerText = "Pitch page: ";
+    let notePageInput = document.createElement('input');
+    notePageInput.label = 'note-page';
+    notePageInput.type = 'number';
+    notePageInput.min = '0';
+    notePageInput.max = '5';
+    notePageInput.value = '2';
+    this.uiElements.notePageInput = element.appendChild(notePageInput);
+    // change vs input event?
+
+    element.appendChild(document.createElement('br'));
+
     let canvas = document.createElement('canvas');
     canvas.setAttribute('id', 'interface');
     canvas.setAttribute('height', '600');
     this.uiElements.canvas = element.appendChild(canvas);
 
-    this.currentNotePage = 2;
+    // this.currentNotePage = 2;
 
     this.viewModel = {
         synthSequence: [-1],
@@ -268,7 +284,8 @@ let JamView = function JamView(element) {
     this.numDrums = 2;
 
     let onClick = function onClick(event) {
-        onCanvasClick(event, this.uiElements.canvas, this.numNotesPerPage, this.currentNotePage,
+        onCanvasClick(event, this.uiElements.canvas, this.numNotesPerPage,
+                      parseInt(this.uiElements.notePageInput.value),
                       this.numDrums,
                       this.viewModel.synthSequence,
                       this.viewModel.drumSequence,
