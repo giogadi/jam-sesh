@@ -80,13 +80,20 @@ function drawSequence(
     }
 }
 
-function cellIxToNoteIx(cellIx, currentPage, numNotesPerPage) {
+function synthCellIxToNoteIx(cellIx, currentPage, numNotesPerPage) {
     // NOTE: the -1 here is so that different pages always share one note on top and bottom.
     return cellIx + currentPage * (numNotesPerPage - 1);
 }
+function drumCellIxToNoteIx(cellIx, currentPage, numNotesPerPage) {
+    // NOTE: the -1 here is so that different pages always share one note on top and bottom.
+    return cellIx;
+}
 
-function noteIxToCellIx(noteIx, currentPage, numNotesPerPage) {
+function synthNoteIxToCellIx(noteIx, currentPage, numNotesPerPage) {
     return noteIx - currentPage * (numNotesPerPage - 1);
+}
+function drumNoteIxToCellIx(noteIx, currentPage, numNotesPerPage) {
+    return noteIx;
 }
 
 // With bottom-left cell index of (0,0) and (x=0,y=0) equal to top-left corner.
@@ -147,13 +154,13 @@ function onCanvasClick(event, canvas, numNotesPerPage, currentNotePage, numDrums
                      gearDims.synthBeatSize,
                      synthSequence.length, numNotesPerPage, synthSequence,
                      currentNotePage,
-                     cellIxToNoteIx,
+                     synthCellIxToNoteIx,
                      updateSynthSequenceFn);
     onSequencerClick(x - gearDims.drumStartX, y - gearDims.drumStartY,
                      gearDims.drumBeatSize,
                      drumSequence.numBeats, numDrums, drumSequence,
                      currentNotePage,
-                     cellIxToNoteIx,
+                     drumCellIxToNoteIx,
                      updateDrumSequenceFn);
 }
 
@@ -176,21 +183,25 @@ function drawInterface() {
                  parseInt(this.uiElements.notePageInput.value),//this.currentNotePage,
                  this.viewModel.synthSequence, gearDims.synthBeatSize,
                  this.viewModel.currentBeatIndex,
-                 noteIxToCellIx);
+                 synthNoteIxToCellIx);
 
     // Drum sequencer
     drawSequence(ctx, gearDims.drumStartX, gearDims.drumStartY,
                  this.numDrums, /*currentNotePage=*/0,
                  this.viewModel.drumSequence, gearDims.drumBeatSize,
                  this.viewModel.currentBeatIndex,
-                 noteIxToCellIx);
+                 drumNoteIxToCellIx);
 }
 
 // Method of JamView
 // TODO: is it cleaner to accept the event and get the new value from there?
 function onScaleDropDownChanged() {
-    console.log("onScaleDropDownChanged");
     this.changeScale(parseInt(this.uiElements.scaleDropDown.value));
+}
+
+// Method of JamView
+function onFilterCutoffSliderChanged() {
+    this.changeFilterCutoff(parseInt(this.uiElements.filterCutoffSlider.value))
 }
 
 // NOTE TO SELF: this is a "named function expression".
@@ -202,11 +213,13 @@ let JamView = function JamView(element) {
     this.togglePlayback = function() {};
     this.changeBpm = function(newBpm) {};
     this.changeScale = function() {};
+    this.changeFilterCutoff = function() {};
 
     this.uiElements = {
         playButton: null,
         scaleDropDown: null,
         bpmLabel: null,
+        filterCutoffSlider: null,
         notePageLabel: null,
         notePageInput: null,
         canvas: null,
@@ -239,12 +252,27 @@ let JamView = function JamView(element) {
 
     element.appendChild(document.createElement('br'));
 
+    // filter cutoff
+    this.uiElements.filterCutoffLabel = element.appendChild(document.createElement('label'));
+    this.uiElements.filterCutoffLabel.htmlFor = 'filter-cutoff';
+    this.uiElements.filterCutoffLabel.innerText = 'Filter cutoff: ';
+    let filterCutoffSlider = document.createElement('input');
+    filterCutoffSlider.id = 'filter-cutoff';
+    filterCutoffSlider.type = 'range';
+    filterCutoffSlider.min = '0';
+    filterCutoffSlider.max = '2000';
+    filterCutoffSlider.value = '1000';
+    this.uiElements.filterCutoffSlider = element.appendChild(filterCutoffSlider);
+    this.uiElements.filterCutoffSlider.oninput = onFilterCutoffSliderChanged.bind(this);
+
+    element.appendChild(document.createElement('br'));
+
     // note page spinner
     this.uiElements.notePageLabel = element.appendChild(document.createElement('label'));
     this.uiElements.notePageLabel.htmlFor = 'note-page';
     this.uiElements.notePageLabel.innerText = "Pitch page: ";
     let notePageInput = document.createElement('input');
-    notePageInput.label = 'note-page';
+    notePageInput.id = 'note-page';
     notePageInput.type = 'number';
     notePageInput.min = '0';
     notePageInput.max = '5';
@@ -258,8 +286,6 @@ let JamView = function JamView(element) {
     canvas.setAttribute('id', 'interface');
     canvas.setAttribute('height', '600');
     this.uiElements.canvas = element.appendChild(canvas);
-
-    // this.currentNotePage = 2;
 
     this.viewModel = {
         synthSequence: [-1],

@@ -1,17 +1,18 @@
+* Customize synth sound
+  + envelopes
 * replace websocket library with something newer
 * Put buttons and shit in the HTML, wtf dude?
 * Populate scale dropdown from model
 * Enable varying # of beats per loop
 * Make BPM global.
-* Add a flag to disable all networking (i.e., local client only)
 * Sequencer
   * Enable changing transpose of sequencer (global)
-  * Enable changing octave (local)
 * Add more sounds
   * Bass
   * pads
   * knobs
   * polyphony
+* Another synth
 * Investigate latency between making a change on one and hearing it on the other
   maybe just an issue with having the app in a background tab?
 * Improve UI

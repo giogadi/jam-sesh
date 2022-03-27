@@ -44,6 +44,7 @@ async function main() {
     jamView.onClickUpdateDrumSequence = jamModel.updateDrumSequence.bind(jamModel);
     jamView.changeBpm = changeBpm.bind(jamModel);
     jamView.changeScale = scaleChanged.bind(jamModel);
+    jamView.changeFilterCutoff = filterCutoffChanged.bind(jamModel);
     jamView.togglePlayback = jamModel.togglePlayback.bind(jamModel);
     jamModel.stateChange = stateChange.bind(jamModel);
 

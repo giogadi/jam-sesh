@@ -253,11 +253,16 @@ function scaleChanged(newScale) {
     this.sendStateToServer();
 }
 
+// Method of JamModel
+function filterCutoffChanged(newCutoff) {
+    this.audio.synths[0].filterDefault = newCutoff;
+}
+
 let JamModel = function JamModel() {
     let setAudio = function setAudio(audio) {
         this.audio = audio;
     }
-    initSound().then(setAudio.bind(this));
+    initSound().then(setAudio.bind(this));    
     this.synthSequence = [];
     this.drumSequence = [];
     this.playback = {
