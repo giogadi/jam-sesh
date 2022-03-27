@@ -3,7 +3,7 @@ function getSoundData(filename) {
         let pathname = window.location.pathname;
         pathname = pathname.substring(0, pathname.lastIndexOf('/'));
         let request = new XMLHttpRequest();
-        let url = 'http://' + window.location.hostname + ":2794" + pathname + "/" + filename;
+        let url = 'http://' + window.location.hostname + ":" + window.location.port + pathname + "/" + filename;
         console.log(url);
         request.open('GET', url);
         request.responseType = 'arraybuffer';
