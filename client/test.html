@@ -10,15 +10,9 @@
       }
     </style> -->
   </head>
-  <!-- <body>
-    <p id="message"></p>
-    <script src="sound.js"></script>
-    <script src="view.js"></script>
-    <script src="model.js"></script>
-    <script src="script.js"></script>
-  </body> -->
   <body>
-    <div id="like_button_container"></div>
+    <p id="message"></p>
+    <div id="root"></div>
     <!-- Load React. -->
     <!-- Note: when deploying, replace "development.js" with "production.min.js". -->
     <!-- TODO: DO NOT INCLUDE BABEL IN PRODUCTION. COMPILE JSX TO JS INSTEAD. -->
@@ -28,6 +22,7 @@
 
     <!-- Load our React component. -->
     <!-- TODO: DO NOT USE text/babel IN SCRIPT TAGS. -->
-    <script src="like_button.js" type="text/babel"></script>
+    <script src="sound.js"></script>
+    <script src="app.jsx" type="text/babel"></script>
   </body>
 </html>
