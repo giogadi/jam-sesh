@@ -3,18 +3,31 @@
   <head>
     <meta charset="utf-8">
     <title>Test</title>
-    <style>
+    <!-- <style>
       body {
       margin: 0;
       overflow: hidden;
       }
-    </style>
+    </style> -->
   </head>
-  <body>
+  <!-- <body>
     <p id="message"></p>
     <script src="sound.js"></script>
     <script src="view.js"></script>
     <script src="model.js"></script>
     <script src="script.js"></script>
+  </body> -->
+  <body>
+    <div id="like_button_container"></div>
+    <!-- Load React. -->
+    <!-- Note: when deploying, replace "development.js" with "production.min.js". -->
+    <!-- TODO: DO NOT INCLUDE BABEL IN PRODUCTION. COMPILE JSX TO JS INSTEAD. -->
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin ></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin ></script>
+
+    <!-- Load our React component. -->
+    <!-- TODO: DO NOT USE text/babel IN SCRIPT TAGS. -->
+    <script src="like_button.js" type="text/babel"></script>
   </body>
 </html>
