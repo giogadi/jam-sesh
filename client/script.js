@@ -9,7 +9,8 @@ async function main() {
     await waitForClick();
     msg.innerHTML = '';
 
-    let jamModel = new JamModel();
+    let jamModel = await makeJamModel();
+    console.log(jamModel);
     let jamView = new JamView(document.body);
 
     // method of JamModel
@@ -35,7 +36,8 @@ async function main() {
             drumSequence: this.drumSequence,
             currentBeatIndex: beatIndex,
             bpm: this.playback.bpm,
-            scale: this.currentScale
+            scale: this.currentScale,
+            filter_cutoff_param: getFilterCutoff(this) / 10000
         };
         jamView.updateView(viewModel);
     }
@@ -44,7 +46,8 @@ async function main() {
     jamView.onClickUpdateDrumSequence = jamModel.updateDrumSequence.bind(jamModel);
     jamView.changeBpm = changeBpm.bind(jamModel);
     jamView.changeScale = scaleChanged.bind(jamModel);
-    jamView.changeFilterCutoff = filterCutoffChanged.bind(jamModel);
+    jamView.changeFilterCutoffLocal = filterCutoffChangedLocal.bind(jamModel);
+    jamView.changeFilterCutoffGlobal = filterCutoffUpdateGlobal.bind(jamModel);
     jamView.togglePlayback = jamModel.togglePlayback.bind(jamModel);
     jamModel.stateChange = stateChange.bind(jamModel);
 

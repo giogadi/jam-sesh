@@ -167,7 +167,8 @@ function sendStateToSocket(socket, jamModel) {
     let stateMsg = {
         synth_sequence: jamModel.synthSequence,
         drum_sequence: jamModel.drumSequence,
-        scale: jamModel.currentScale
+        scale: jamModel.currentScale,
+        filter_cutoff: getFilterCutoff(jamModel)
     };
     const stateMsgStr = JSON.stringify(stateMsg);
     socket.send(stateMsgStr);
@@ -181,6 +182,7 @@ function updateStateFromSocketEvent(event) {
     this.synthSequence = update.synth_sequence.slice();
     this.drumSequence = update.drum_sequence.slice();
     this.currentScale = update.scale;
+    setFilterCutoff(this, update.filter_cutoff);
     this.stateChange();
 }
 
@@ -254,15 +256,26 @@ function scaleChanged(newScale) {
 }
 
 // Method of JamModel
-function filterCutoffChanged(newCutoff) {
-    this.audio.synths[0].filterDefault = newCutoff;
+function filterCutoffChangedLocal(newCutoffParam) {
+    let newCutoff = newCutoffParam * 10000;
+    setFilterCutoff(this, newCutoff);
 }
 
-let JamModel = function JamModel() {
-    let setAudio = function setAudio(audio) {
-        this.audio = audio;
-    }
-    initSound().then(setAudio.bind(this));    
+// Method of JamModel
+function filterCutoffUpdateGlobal() {
+    this.sendStateToServer();
+}
+
+function getFilterCutoff(jamModel) {
+    return jamModel.audio.synths[0].filterDefault;
+}
+
+function setFilterCutoff(jamModel, newCutoff) {
+    jamModel.audio.synths[0].filterDefault = newCutoff;
+}
+
+// method of jammodel
+function initProperties() {
     this.synthSequence = [];
     this.drumSequence = [];
     this.playback = {
@@ -295,7 +308,23 @@ let JamModel = function JamModel() {
     this.forceStateUpdate = function forceStateUpdate() {
         this.stateChange();
     };
+}
 
-    openSocket().then(onSocketOpen.bind(this),
-                      e => console.log("socket connection failed: " + e));
+async function makeJamModel() {
+    let jamModel = new Object();
+    jamModel.audio = null;
+    let setAudio = function setAudio(audio) {
+        jamModel.audio = audio;
+        setFilterCutoff(jamModel, 0);
+    }
+
+    initProperties.bind(jamModel)();
+
+    let sound = await initSound();
+    setAudio.bind(jamModel)(sound);
+
+    let socket = await openSocket();
+    onSocketOpen.bind(jamModel)(socket);
+    
+    return jamModel;
 }

@@ -22,5 +22,3 @@
 * Room is persistent.
 * If anything in room was edited while one user was away, returning user can listen to how the loop changed, fast-forwarded. Just play the loop nonstop and playback all the edits made during that time. COOL
 * (Maybe) encourage that people "fight" over each of the dials/instruments. If two people try to use same dial, the play rock-paper-scissors (or something) for control.
-
-Omfg. this must be THE PROJECT!!!

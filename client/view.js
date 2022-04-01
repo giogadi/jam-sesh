@@ -200,8 +200,15 @@ function onScaleDropDownChanged() {
 }
 
 // Method of JamView
-function onFilterCutoffSliderChanged() {
-    this.changeFilterCutoff(parseInt(this.uiElements.filterCutoffSlider.value))
+function onFilterCutoffSliderMoved() {
+    let param = 
+        parseFloat(this.uiElements.filterCutoffSlider.value) / parseFloat(this.uiElements.filterCutoffSlider.max);
+    this.changeFilterCutoffLocal(param);
+}
+
+// Method of JamView
+function onFilterCutoffSliderReleased() {
+    this.changeFilterCutoffGlobal();
 }
 
 // NOTE TO SELF: this is a "named function expression".
@@ -213,7 +220,8 @@ let JamView = function JamView(element) {
     this.togglePlayback = function() {};
     this.changeBpm = function(newBpm) {};
     this.changeScale = function() {};
-    this.changeFilterCutoff = function() {};
+    this.changeFilterCutoffLocal = function() {};
+    this.changeFilterCutoffGlobal = function() {};
 
     this.uiElements = {
         playButton: null,
@@ -260,10 +268,11 @@ let JamView = function JamView(element) {
     filterCutoffSlider.id = 'filter-cutoff';
     filterCutoffSlider.type = 'range';
     filterCutoffSlider.min = '0';
-    filterCutoffSlider.max = '2000';
-    filterCutoffSlider.value = '1000';
+    filterCutoffSlider.max = '1000';
+    filterCutoffSlider.value = '500';
     this.uiElements.filterCutoffSlider = element.appendChild(filterCutoffSlider);
-    this.uiElements.filterCutoffSlider.oninput = onFilterCutoffSliderChanged.bind(this);
+    this.uiElements.filterCutoffSlider.oninput = onFilterCutoffSliderMoved.bind(this);
+    this.uiElements.filterCutoffSlider.onchange = onFilterCutoffSliderReleased.bind(this);
 
     element.appendChild(document.createElement('br'));
 
@@ -304,6 +313,7 @@ let JamView = function JamView(element) {
         this.uiElements.bpmLabel.innerHTML =
             "BPM: " + newViewModel.bpm;
         this.uiElements.scaleDropDown.selectedIndex = newViewModel.scale;
+        this.uiElements.filterCutoffSlider.value = (newViewModel.filter_cutoff_param * 1000).toString();
     }
 
     this.numNotesPerPage = 13;
