@@ -1,0 +1,36 @@
+.sequencerTable {
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+
+.sequencerTd {
+    border: 2px solid #000;
+    background: #0f0;
+    padding: 0;
+}
+
+.sequencerCell {
+    background: #fff;
+    border: none;
+    float: left;
+    font-size: 24px;
+    font-weight: bold;
+    line-height: 34px;
+    height: 20px;
+    padding: 0;
+    text-align: center;
+    width: 20px;
+}
+
+.sequencerCellActive {
+    background: rgb(200,0,0);
+}
+.sequencerCellInactive {
+    background: rgb(100,100,100);
+}
+.sequencerCellActiveOnBeat {
+    background: rgb(200,0,0,0.5);
+}
+.sequencerCellInactiveOnBeat {
+    background: rgb(100,100,100,0.5);
+}
