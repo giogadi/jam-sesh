@@ -1,3 +1,6 @@
+* Change from passing entire state to just the state changes
+  * NOTE: this will require actual state management in the multiplayer server
+* multiple sequencers in react app
 * Compile JSX to JS and stop including BABEL
 * Customize synth sound
   + envelopes

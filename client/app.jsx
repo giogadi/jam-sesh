@@ -60,9 +60,66 @@ function noteFrequency(note_ix) {
   return BASE_FREQS[base_freq_ix] * (1 << num_octaves_above);
 }
 
+// 16 rows.
+// row 0: noteIx 15 + 2*12
+// ro 15: noteIx 0 + 2*12
 function fromCellToFreq(row) {
   let noteIx = (NUM_ROWS - 1) - row;
   return noteFrequency(noteIx + NUM_CHROMATIC_NOTES*2);
+}
+
+// function convertNoteIxToTableRow(noteIx) {
+//   let noteIxNoOctave = noteIx - NUM_CHROMATIC_NOTES*2;
+//   if (noteIxNoOctave < 0) {
+//     return -1;
+//   }
+//   if (noteIxNoOctave < 0 || noteIxNoOctave >= NUM_ROWS) {
+//     console.assert("bad note ix " + noteIx);
+//   }
+//   return (NUM_ROWS - 1) - noteIxNoOctave;
+// }
+
+// function convertNoteSeqToTable(noteSeq) {
+//   let seqTable = [];
+//   for (let i = 0; i < NUM_ROWS; ++i) {
+//     let row = [];
+//     for (let j = 0; j < NUM_BEATS; ++j) {
+//       row.push(false);
+//     }
+//     seqTable.push(row);
+//   }
+
+//   let numVoices = noteSeq[0].length;
+//   console.assert(numVoices == NUM_VOICES);
+//   console.assert(noteSeq.length === NUM_BEATS);
+//   for (let beatIx = 0; beatIx < noteSeq.length; ++beatIx) {
+//     for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
+//       let noteIx = noteSeq[beatIx][voiceIx];
+//       if (noteIx < 0) {
+//         continue;
+//       }
+//       let tableRow = convertNoteIxToTableRow(noteIx);
+//       if (tableRow >= 0) {
+//         seqTable[tableRow][beatIx] = true;
+//       }
+//     }
+//   }
+
+//   return seqTable;
+// }
+
+function openSocket() {
+  return new Promise(function(resolve, reject) {
+      let socket =
+          new WebSocket('ws://' + window.location.hostname + ':2795',
+                        'giogadi');
+      socket.onopen = function(e) {
+          resolve(socket);
+      }
+      socket.onerror = function(e) {
+          reject(e);
+      }
+  });
 }
 
 class App extends React.Component {
@@ -84,15 +141,33 @@ class App extends React.Component {
     this.handleSequencerClick = this.handleSequencerClick.bind(this);
     this.handlePlayButtonClick = this.handlePlayButtonClick.bind(this);
     this.perBeat = this.perBeat.bind(this);
+    this.updateStateFromSocketEvent = this.updateStateFromSocketEvent.bind(this);
 
     this.playIntervalId = null;
   }
 
-  componentDidMount() {
-    const initSoundAsync = async () => {
-      this.sound = await initSound();
-    };
-    initSoundAsync();
+  async componentDidMount() {
+    // TODO: this is how other people do async functions. why?
+    // const initSoundAsync = async () => {
+    //   this.sound = await initSound();
+    // };
+    // initSoundAsync();
+    this.sound = await initSound();
+
+    this.socket = await openSocket();
+    this.socket.onmessage = this.updateStateFromSocketEvent;
+  }
+
+  updateStateFromSocketEvent(event) {
+    let update = JSON.parse(event.data);
+    console.log("Received message " + JSON.stringify(update));
+    // this.synthSequence = update.synth_sequence.slice();
+    // this.drumSequence = update.drum_sequence.slice();
+    // this.currentScale = update.scale;
+    // setFilterCutoff(this, update.filter_cutoff);
+    this.setState({
+      sequencerTable: update.synth_sequence.slice()
+    })
   }
 
   perBeat() {
@@ -129,30 +204,42 @@ class App extends React.Component {
   }
 
   handleSequencerClick(row, col) {
-    this.setState((state, props) => {
-      if (!state.sequencerTable[row][col]) {
-        // count number of active voices in this column
-        let numVoices = 0;
-        for (let r = 0; r < NUM_ROWS; ++r) {
-          if (state.sequencerTable[r][col]) {
-            ++numVoices;
-          }
-        }
-        if (numVoices >= NUM_VOICES) {
-          return state;
-        }
-      }
-
-      let newTable = [];
+    // QUESTION: is it safe to define newTable in terms of state *outside of this.setState* 
+    // and then set new state w.r.t. newTable (and therefore in terms of old state)??
+    if (!this.state.sequencerTable[row][col]) {
+      // count number of active voices in this column
+      let numVoices = 0;
       for (let r = 0; r < NUM_ROWS; ++r) {
-        newTable.push(state.sequencerTable[r].slice());
+        if (this.state.sequencerTable[r][col]) {
+          ++numVoices;
+        }
       }
-      newTable[row][col] = !newTable[row][col];
+      if (numVoices >= NUM_VOICES) {
+        return;
+      }
+    }
 
+    let newTable = [];
+    for (let r = 0; r < NUM_ROWS; ++r) {
+      newTable.push(this.state.sequencerTable[r].slice());
+    }
+    newTable[row][col] = !newTable[row][col];
+
+    this.setState((state, props) => {
       return {
         sequencerTable: newTable
       };
     });
+
+    let stateMsg = {
+      synth_sequence: newTable
+      // drum_sequence: jamModel.drumSequence,
+      // scale: jamModel.currentScale,
+      // filter_cutoff: getFilterCutoff(jamModel)
+    };
+    const stateMsgStr = JSON.stringify(stateMsg);
+    this.socket.send(stateMsgStr);
+    console.log("Sent " + stateMsgStr);
   }
 
   render() {
