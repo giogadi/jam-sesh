@@ -1,25 +1,22 @@
 'use strict';
 
-const NUM_BEATS = 16;
-const NUM_VOICES = 2;
-const NUM_ROWS = 16;
-
 class SequencerTable extends React.Component {
   constructor(props) {
-    super(props);
-    let numColumns = NUM_BEATS;
-    this.columns = [];
-    for (let i = 0; i < numColumns; ++i) {
-      this.columns.push(i);
-    }
-
-    this.rows = [];
-    for (let i = 0; i < NUM_ROWS; ++i) {
-      this.rows.push(i);
-    }
+    super(props); 
   }
 
   render() {
+    let numRows = this.props.setting.length;
+    let numColumns = this.props.setting[0].length;
+    let rows = [];
+    for (let i = 0; i < numRows; ++i) {
+      rows.push(i);
+    }
+    let columns = [];
+    for (let i = 0; i < numColumns; ++i) {
+      columns.push(i);
+    }
+
     let getButtonClass = (r,c, beatIx) => {
       const onBeat = beatIx == c;
       let className = this.props.setting[r][c] ?
@@ -33,9 +30,9 @@ class SequencerTable extends React.Component {
     return (
       <table className="sequencerTable">
         <tbody>
-          { this.rows.map((r) =>
+          { rows.map((r) =>
               <tr key={r.toString()}>
-                { this.columns.map((c) =>
+                { columns.map((c) =>
                   <td className="sequencerTd" key={c.toString()}>
                     {
                       <button className={getButtonClass(r,c,this.props.beatIx-1)} 
@@ -63,8 +60,8 @@ function noteFrequency(note_ix) {
 // 16 rows.
 // row 0: noteIx 15 + 2*12
 // ro 15: noteIx 0 + 2*12
-function fromCellToFreq(row) {
-  let noteIx = (NUM_ROWS - 1) - row;
+function fromCellToFreq(row, numRows) {
+  let noteIx = (numRows - 1) - row;
   return noteFrequency(noteIx + NUM_CHROMATIC_NOTES*2);
 }
 
@@ -126,19 +123,34 @@ class App extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      sequencerTable: [],
+      synthSeqTable: [],
+      samplerTable: [],
       beatIndex: -1
     };
-    for (let i = 0; i < NUM_ROWS; ++i) {
+    const DEFAULT_NUM_SYNTH_ROWS = 12;
+    const DEFAULT_NUM_SYNTH_BEATS = 16;
+    for (let i = 0; i < DEFAULT_NUM_SYNTH_ROWS; ++i) {
       let row = [];
-      for (let j = 0; j < NUM_BEATS; ++j) {
-        row.push(false);
+      for (let j = 0; j < DEFAULT_NUM_SYNTH_BEATS; ++j) {
+        row.push(0);
       }
-      this.state.sequencerTable.push(row);
+      this.state.synthSeqTable.push(row);
     }
-    this.state.sequencerTable[0][0] = true;
 
-    this.handleSequencerClick = this.handleSequencerClick.bind(this);
+    const DEFAULT_NUM_SAMPLER_ROWS = 2;
+    const DEFAULT_NUM_SAMPLER_BEATS = 16;
+    for (let i = 0; i < DEFAULT_NUM_SAMPLER_ROWS; ++i) {
+      let row = [];
+      for (let j = 0; j < DEFAULT_NUM_SAMPLER_BEATS; ++j) {
+        row.push(0);
+      }
+      this.state.samplerTable.push(row);
+    }
+
+    this.getNumVoices = this.getNumVoices.bind(this);
+
+    this.handleSynthSeqClick = this.handleSynthSeqClick.bind(this);
+    this.handleSamplerClick = this.handleSamplerClick.bind(this);
     this.handlePlayButtonClick = this.handlePlayButtonClick.bind(this);
     this.perBeat = this.perBeat.bind(this);
     this.updateStateFromSocketEvent = this.updateStateFromSocketEvent.bind(this);
@@ -161,32 +173,60 @@ class App extends React.Component {
   updateStateFromSocketEvent(event) {
     let update = JSON.parse(event.data);
     console.log("Received message " + JSON.stringify(update));
-    // this.synthSequence = update.synth_sequence.slice();
-    // this.drumSequence = update.drum_sequence.slice();
-    // this.currentScale = update.scale;
-    // setFilterCutoff(this, update.filter_cutoff);
+    let newSynthSeq = [];
+    {
+      let numRows = update.synth_sequence.length;
+      let numCols = update.synth_sequence[0].length;
+      for (let r = 0; r < numRows; ++r) {
+        let row = [];
+        for (let c = 0; c < numCols; ++c) {
+          row.push(update.synth_sequence[r][c]);
+        }
+        newSynthSeq.push(row);
+      }
+    }
+    let newSamplerSeq = [];
+    {
+      let numRows = update.sampler_sequence.length;
+      let numCols = update.sampler_sequence[0].length;
+      for (let r = 0; r < numRows; ++r) {
+        let row = [];
+        for (let c = 0; c < numCols; ++c) {
+          row.push(update.sampler_sequence[r][c]);
+        }
+        newSamplerSeq.push(row);
+      }
+    }
     this.setState({
-      sequencerTable: update.synth_sequence.slice()
+      synthSeqTable: newSynthSeq,
+      samplerTable: newSamplerSeq
     })
+  }
+
+  getNumVoices(synthIx) {
+    return this.sound.synths[synthIx].voices.length;
   }
 
   perBeat() {
     console.assert(this.state.beatIndex >= 0);
 
+    let numRows = this.state.synthSeqTable.length;
+    let numBeats = this.state.synthSeqTable[0].length;
+
     let voices = [];
-    for (let row = 0; row < NUM_ROWS; ++row) {
-      if (this.state.sequencerTable[row][this.state.beatIndex]) {
-        voices.push(fromCellToFreq(row));
+    for (let row = 0; row < numRows; ++row) {
+      if (this.state.synthSeqTable[row][this.state.beatIndex]) {
+        voices.push(fromCellToFreq(row, numRows));
       }
     }
 
-    console.assert(voices.length <= NUM_VOICES);
+    console.assert(voices.length <= this.getNumVoices(0));
 
     synthPlayVoices(this.sound.synths[0], voices, this.sound.audioCtx);
 
     // NOTE: THE PARENTHESIS RIGHT AFTER THE ARROW IS EXTREMELY IMPORTANT!!!!!
     this.setState((state, props) => ({
-      beatIndex: (state.beatIndex + 1) % NUM_BEATS
+      beatIndex: (state.beatIndex + 1) % numBeats
     }));
   }
 
@@ -203,39 +243,65 @@ class App extends React.Component {
     }
   }
 
-  handleSequencerClick(row, col) {
+  // If it returns null, then no change to seq
+  newSeqFromClick(seq, row, col, numVoices) {
+    const numRows = seq.length;
+
     // QUESTION: is it safe to define newTable in terms of state *outside of this.setState* 
     // and then set new state w.r.t. newTable (and therefore in terms of old state)??
-    if (!this.state.sequencerTable[row][col]) {
+    if (!seq[row][col]) {
       // count number of active voices in this column
-      let numVoices = 0;
-      for (let r = 0; r < NUM_ROWS; ++r) {
-        if (this.state.sequencerTable[r][col]) {
-          ++numVoices;
+      let activeVoices = 0;
+      for (let r = 0; r < numRows; ++r) {
+        if (seq[r][col]) {
+          ++activeVoices;
         }
       }
-      if (numVoices >= NUM_VOICES) {
-        return;
+      if (activeVoices >= numVoices) {
+        return null;
       }
     }
 
     let newTable = [];
-    for (let r = 0; r < NUM_ROWS; ++r) {
-      newTable.push(this.state.sequencerTable[r].slice());
+    for (let r = 0; r < numRows; ++r) {
+      newTable.push(seq[r].slice());
     }
-    newTable[row][col] = !newTable[row][col];
+    newTable[row][col] = newTable[row][col] ? 0 : 1;
+    return newTable;
+  }
 
-    this.setState((state, props) => {
-      return {
-        sequencerTable: newTable
-      };
+  handleSynthSeqClick(row, col) {
+    let newTable = this.newSeqFromClick(this.state.synthSeqTable, row, col, this.getNumVoices(0));
+    if (newTable === null) {
+      return;
+    }
+
+    this.setState({
+        synthSeqTable: newTable
     });
 
     let stateMsg = {
-      synth_sequence: newTable
-      // drum_sequence: jamModel.drumSequence,
-      // scale: jamModel.currentScale,
-      // filter_cutoff: getFilterCutoff(jamModel)
+      synth_sequence: newTable,
+      sampler_sequence: this.state.samplerTable
+    };
+    const stateMsgStr = JSON.stringify(stateMsg);
+    this.socket.send(stateMsgStr);
+    console.log("Sent " + stateMsgStr);
+  }
+
+  handleSamplerClick(row, col) {
+    let newTable = this.newSeqFromClick(this.state.samplerTable, row, col, 2);
+    if (newTable === null) {
+      return;
+    }
+
+    this.setState({
+        samplerTable: newTable
+    });
+
+    let stateMsg = {
+      synth_sequence: this.state.synthSeqTable,
+      sampler_sequence: newTable
     };
     const stateMsgStr = JSON.stringify(stateMsg);
     this.socket.send(stateMsgStr);
@@ -247,9 +313,14 @@ class App extends React.Component {
       <div>
         <button onClick={this.handlePlayButtonClick}>Play/Stop</button>
         <SequencerTable
-          setting={this.state.sequencerTable}
+          setting={this.state.synthSeqTable}
           beatIx={this.state.beatIndex}
-          onClick={this.handleSequencerClick} />
+          onClick={this.handleSynthSeqClick} />
+        <br />
+        <SequencerTable
+          setting={this.state.samplerTable}
+          beatIx={this.state.beatIndex}
+          onClick={this.handleSamplerClick} />
       </div>
     );
   }

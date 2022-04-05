@@ -1,6 +1,10 @@
+* make sampler seq actually play sounds
+* scrollbar on synth
 * Change from passing entire state to just the state changes
   * NOTE: this will require actual state management in the multiplayer server
+  * Alternatively, consider just sending a compressed state packet
 * multiple sequencers in react app
+* Investigate potential latency in threads for doing from_client_to_main and then from_main_to_client in sync essentially.
 * Compile JSX to JS and stop including BABEL
 * Customize synth sound
   + envelopes

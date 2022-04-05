@@ -15,40 +15,23 @@ use websocket::OwnedMessage;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ClientId(usize);
 
-// type NoteIndex = i32;
-// type ScaleType = i32;
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct State {
-    // synth_sequence: Vec<Vec<NoteIndex>>,
-    synth_sequence: Vec<Vec<bool>>,
-    // drum_sequence: Vec<Vec<NoteIndex>>,
-    // scale: ScaleType,
-    // filter_cutoff: f32
+    synth_sequence: Vec<Vec<i32>>,
+    sampler_sequence: Vec<Vec<i32>>
 }
 impl State {
-    fn new(num_rows: usize, num_beats: usize) -> State {
+    fn new() -> State {
+        const NUM_BEATS: usize = 16;
+        const NUM_ROWS: usize = 14;
         let mut state = State {
-            synth_sequence: vec![vec![false; num_rows]; num_beats],
-            // drum_sequence: vec![vec![-1; 2]; num_beats],
-            // scale: 0,
-            // filter_cutoff: 1000.0
+            synth_sequence: vec![vec![0; NUM_BEATS]; NUM_ROWS],
+            sampler_sequence: vec![vec![0; NUM_BEATS]; 2]
         };
-        // let default_note_ix = 24;
-        state.synth_sequence[15][0] = true;
-        state.synth_sequence[15][4] = true;
-        state.synth_sequence[15][8] = true;
-        state.synth_sequence[15][12] = true;
-        // for (ix, notes) in state.synth_sequence.iter_mut().enumerate() {
-        //     if ix % 4 == 0 {
-        //         notes[0] = default_note_ix;
-        //     }
-        // }
-        // for (ix, notes) in state.drum_sequence.iter_mut().enumerate() {
-        //     if ix % 4 == 0 {
-        //         notes[0] = 0;
-        //     }
-        // }
+        state.synth_sequence[NUM_ROWS-1][0] = 1;
+        state.synth_sequence[NUM_ROWS-1][4] = 1;
+        state.synth_sequence[NUM_ROWS-1][8] = 1;
+        state.synth_sequence[NUM_ROWS-1][12] = 1;
         state
     }
 }
@@ -151,13 +134,11 @@ fn serve_client(
 }
 
 fn main() {
-    const NUM_BEATS: usize = 16;
-    const NUM_ROWS: usize = 16;
     let server = Server::bind("0.0.0.0:2795").unwrap();
     let (to_main, from_threads) = mpsc::channel();
     let connections: Arc<Mutex<Vec<ClientInfo>>> =
         Arc::new(Mutex::new(Vec::new()));
-    let state: Arc<Mutex<State>> = Arc::new(Mutex::new(State::new(NUM_BEATS, NUM_ROWS)));
+    let state: Arc<Mutex<State>> = Arc::new(Mutex::new(State::new()));
     // TODO: I hate these names
     let thread_connections = Arc::clone(&connections);
     let thread_state = Arc::clone(&state);
