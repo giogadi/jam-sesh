@@ -17,21 +17,22 @@ struct ClientId(usize);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct State {
-    synth_sequence: Vec<Vec<i32>>,
+    synth_sequences: Vec<Vec<Vec<i32>>>,
     sampler_sequence: Vec<Vec<i32>>
 }
 impl State {
     fn new() -> State {
+        const NUM_SYNTHS: usize = 2;
         const NUM_BEATS: usize = 16;
         const NUM_ROWS: usize = 14;
         let mut state = State {
-            synth_sequence: vec![vec![0; NUM_BEATS]; NUM_ROWS],
+            synth_sequences: vec![vec![vec![0; NUM_BEATS]; NUM_ROWS]; NUM_SYNTHS],
             sampler_sequence: vec![vec![0; NUM_BEATS]; 2]
         };
-        state.synth_sequence[NUM_ROWS-1][0] = 1;
-        state.synth_sequence[NUM_ROWS-1][4] = 1;
-        state.synth_sequence[NUM_ROWS-1][8] = 1;
-        state.synth_sequence[NUM_ROWS-1][12] = 1;
+        state.synth_sequences[0][NUM_ROWS-1][0] = 1;
+        state.synth_sequences[0][NUM_ROWS-1][4] = 1;
+        state.synth_sequences[0][NUM_ROWS-1][8] = 1;
+        state.synth_sequences[0][NUM_ROWS-1][12] = 1;
         state
     }
 }

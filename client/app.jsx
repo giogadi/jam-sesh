@@ -160,7 +160,7 @@ class App extends React.Component {
       for (let r = 0; r < numRows; ++r) {
         let row = [];
         for (let c = 0; c < numCols; ++c) {
-          row.push(update.synth_sequence[s][r][c]);
+          row.push(update.synth_sequences[s][r][c]);
         }
         synthSeq.push(row);
       }
