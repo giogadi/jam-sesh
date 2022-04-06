@@ -65,6 +65,10 @@ function fromCellToFreq(row, numRows) {
   return noteFrequency(noteIx + NUM_CHROMATIC_NOTES*2);
 }
 
+function fromCellToSampleIx(row, numRows) {
+  return (numRows - 1) - row;
+}
+
 // function convertNoteIxToTableRow(noteIx) {
 //   let noteIxNoOctave = noteIx - NUM_CHROMATIC_NOTES*2;
 //   if (noteIxNoOctave < 0) {
@@ -153,6 +157,8 @@ class App extends React.Component {
     this.handleSamplerClick = this.handleSamplerClick.bind(this);
     this.handlePlayButtonClick = this.handlePlayButtonClick.bind(this);
     this.perBeat = this.perBeat.bind(this);
+    this.synthPerBeat = this.synthPerBeat.bind(this);
+    this.samplerPerBeat = this.samplerPerBeat.bind(this);
     this.updateStateFromSocketEvent = this.updateStateFromSocketEvent.bind(this);
 
     this.playIntervalId = null;
@@ -207,9 +213,7 @@ class App extends React.Component {
     return this.sound.synths[synthIx].voices.length;
   }
 
-  perBeat() {
-    console.assert(this.state.beatIndex >= 0);
-
+  synthPerBeat() {
     let numRows = this.state.synthSeqTable.length;
     let numBeats = this.state.synthSeqTable[0].length;
 
@@ -223,6 +227,29 @@ class App extends React.Component {
     console.assert(voices.length <= this.getNumVoices(0));
 
     synthPlayVoices(this.sound.synths[0], voices, this.sound.audioCtx);
+  }
+
+  samplerPerBeat() {
+    let numRows = this.state.samplerTable.length;
+    let numBeats = this.state.samplerTable[0].length;
+
+    let cellIx;
+    for (let row = 0; row < numRows; ++row) {
+      if (this.state.samplerTable[row][this.state.beatIndex]) {
+        cellIx = fromCellToSampleIx(row, numRows);
+        console.assert(cellIx < this.sound.drumSounds.length);
+        playSoundFromBuffer(this.sound.audioCtx, this.sound.drumSounds[cellIx]);
+      }
+    }
+  }
+
+  perBeat() {
+    console.assert(this.state.beatIndex >= 0);
+
+    this.synthPerBeat();
+    this.samplerPerBeat();
+
+    let numBeats = this.state.synthSeqTable[0].length;
 
     // NOTE: THE PARENTHESIS RIGHT AFTER THE ARROW IS EXTREMELY IMPORTANT!!!!!
     this.setState((state, props) => ({
