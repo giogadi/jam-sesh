@@ -69,46 +69,6 @@ function fromCellToSampleIx(row, numRows) {
   return (numRows - 1) - row;
 }
 
-// function convertNoteIxToTableRow(noteIx) {
-//   let noteIxNoOctave = noteIx - NUM_CHROMATIC_NOTES*2;
-//   if (noteIxNoOctave < 0) {
-//     return -1;
-//   }
-//   if (noteIxNoOctave < 0 || noteIxNoOctave >= NUM_ROWS) {
-//     console.assert("bad note ix " + noteIx);
-//   }
-//   return (NUM_ROWS - 1) - noteIxNoOctave;
-// }
-
-// function convertNoteSeqToTable(noteSeq) {
-//   let seqTable = [];
-//   for (let i = 0; i < NUM_ROWS; ++i) {
-//     let row = [];
-//     for (let j = 0; j < NUM_BEATS; ++j) {
-//       row.push(false);
-//     }
-//     seqTable.push(row);
-//   }
-
-//   let numVoices = noteSeq[0].length;
-//   console.assert(numVoices == NUM_VOICES);
-//   console.assert(noteSeq.length === NUM_BEATS);
-//   for (let beatIx = 0; beatIx < noteSeq.length; ++beatIx) {
-//     for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
-//       let noteIx = noteSeq[beatIx][voiceIx];
-//       if (noteIx < 0) {
-//         continue;
-//       }
-//       let tableRow = convertNoteIxToTableRow(noteIx);
-//       if (tableRow >= 0) {
-//         seqTable[tableRow][beatIx] = true;
-//       }
-//     }
-//   }
-
-//   return seqTable;
-// }
-
 function openSocket() {
   return new Promise(function(resolve, reject) {
       let socket =
@@ -172,8 +132,15 @@ class App extends React.Component {
     // initSoundAsync();
     this.sound = await initSound();
 
-    this.socket = await openSocket();
-    this.socket.onmessage = this.updateStateFromSocketEvent;
+    try {
+      this.socket = await openSocket();
+    } catch (e) {
+      this.socket = null;
+    }
+    
+    if (this.socket !== null) {
+      this.socket.onmessage = this.updateStateFromSocketEvent;
+    }
   }
 
   updateStateFromSocketEvent(event) {
@@ -307,13 +274,15 @@ class App extends React.Component {
         synthSeqTable: newTable
     });
 
-    let stateMsg = {
-      synth_sequence: newTable,
-      sampler_sequence: this.state.samplerTable
-    };
-    const stateMsgStr = JSON.stringify(stateMsg);
-    this.socket.send(stateMsgStr);
-    console.log("Sent " + stateMsgStr);
+    if (this.socket !== null) {
+      let stateMsg = {
+        synth_sequence: newTable,
+        sampler_sequence: this.state.samplerTable
+      };
+      const stateMsgStr = JSON.stringify(stateMsg);
+      this.socket.send(stateMsgStr);
+      console.log("Sent " + stateMsgStr);
+    }
   }
 
   handleSamplerClick(row, col) {
@@ -326,13 +295,15 @@ class App extends React.Component {
         samplerTable: newTable
     });
 
-    let stateMsg = {
-      synth_sequence: this.state.synthSeqTable,
-      sampler_sequence: newTable
-    };
-    const stateMsgStr = JSON.stringify(stateMsg);
-    this.socket.send(stateMsgStr);
-    console.log("Sent " + stateMsgStr);
+    if (this.socket !== null) {
+      let stateMsg = {
+        synth_sequence: this.state.synthSeqTable,
+        sampler_sequence: newTable
+      };
+      const stateMsgStr = JSON.stringify(stateMsg);
+      this.socket.send(stateMsgStr);
+      console.log("Sent " + stateMsgStr);
+    }
   }
 
   render() {

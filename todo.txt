@@ -1,4 +1,3 @@
-* make sampler seq actually play sounds
 * scrollbar on synth
 * Change from passing entire state to just the state changes
   * NOTE: this will require actual state management in the multiplayer server
