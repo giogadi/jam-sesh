@@ -91,7 +91,7 @@ class App extends React.Component {
       samplerTable: [],
       beatIndex: -1
     };
-    const DEFAULT_NUM_SYNTHS = 1;
+    const DEFAULT_NUM_SYNTHS = 2;
     for (let synthIx = 0; synthIx < DEFAULT_NUM_SYNTHS; ++synthIx) {
       let seqTable = [];
       const DEFAULT_NUM_SYNTH_ROWS = 12;
@@ -281,13 +281,12 @@ class App extends React.Component {
       if (synthIx === clickedSynthIx) {
         newTables.push(this.newSeqFromClick(seqs[synthIx], row, col, numVoices));
       } else {
-        let numRows = seqs[synthIx].numRows;
+        let numRows = seqs[synthIx].length;
         let newTable = [];
         for (let r = 0; r < numRows; ++r) {
           newTable.push(seqs[synthIx][r].slice());
         }
         newTables.push(newTable);
-        // newTables.push(seqs[synthIx].slice());
       }
     }
     return newTables;
@@ -339,12 +338,12 @@ class App extends React.Component {
     return (
       <div>
         <button onClick={this.handlePlayButtonClick}>Play/Stop</button>
-        { [0].map((c) =>
-            <div key={c.toString()}>
+        { [0,1].map((s) =>
+            <div key={s.toString()}>
               <SequencerTable
-                setting={this.state.synthSeqTables[0]}
+                setting={this.state.synthSeqTables[s]}
                 beatIx={this.state.beatIndex}
-                onClick={(r,c) => this.handleSynthSeqClick(0,r,c)} /> 
+                onClick={(r,c) => this.handleSynthSeqClick(s,r,c)} /> 
               <br />
             </div>)}
         {/* <SequencerTable
