@@ -35,7 +35,7 @@ class SequencerTable extends React.Component {
                 { columns.map((c) =>
                   <td className="sequencerTd" key={c.toString()}>
                     {
-                      <button className={getButtonClass(r,c,this.props.beatIx-1)} 
+                      <button className={getButtonClass(r,c,this.props.beatIx)} 
                         onClick={() => this.props.onClick(r,c)}
                       />
                     }
@@ -189,14 +189,14 @@ class App extends React.Component {
     return this.sound.synths[synthIx].voices.length;
   }
 
-  synthPerBeat() {
+  synthPerBeat(beatIndex) {
     let numSynths = this.state.synthSeqTables.length;
     for (let synthIx = 0; synthIx < numSynths; ++synthIx) {
       let numRows = this.state.synthSeqTables[synthIx].length;
       let numBeats = this.state.synthSeqTables[synthIx][0].length;
       let voices = [];
       for (let row = 0; row < numRows; ++row) {
-        if (this.state.synthSeqTables[synthIx][row][this.state.beatIndex]) {
+        if (this.state.synthSeqTables[synthIx][row][beatIndex]) {
           voices.push(fromCellToFreq(row, numRows));
         }
       }
@@ -205,13 +205,13 @@ class App extends React.Component {
     }
   }
 
-  samplerPerBeat() {
+  samplerPerBeat(beatIndex) {
     let numRows = this.state.samplerTable.length;
     let numBeats = this.state.samplerTable[0].length;
 
     let cellIx;
     for (let row = 0; row < numRows; ++row) {
-      if (this.state.samplerTable[row][this.state.beatIndex]) {
+      if (this.state.samplerTable[row][beatIndex]) {
         cellIx = fromCellToSampleIx(row, numRows);
         console.assert(cellIx < this.sound.drumSounds.length);
         playSoundFromBuffer(this.sound.audioCtx, this.sound.drumSounds[cellIx]);
@@ -220,17 +220,19 @@ class App extends React.Component {
   }
 
   perBeat() {
-    console.assert(this.state.beatIndex >= 0);
-
-    this.synthPerBeat();
-    this.samplerPerBeat();
-
     // TODO!!!!!! We should make this allow for different beat lengths on different sequencers.
     let numBeats = this.state.synthSeqTables[0][0].length;
 
+    // TODO: might be a problem to depend on current state here
+    let newBeatIx = (this.state.beatIndex + 1) % numBeats;
+    console.assert(newBeatIx >= 0);
+
+    this.synthPerBeat(newBeatIx);
+    this.samplerPerBeat(newBeatIx);
+
     // NOTE: THE PARENTHESIS RIGHT AFTER THE ARROW IS EXTREMELY IMPORTANT!!!!!
     this.setState((state, props) => ({
-      beatIndex: (state.beatIndex + 1) % numBeats
+      beatIndex: newBeatIx
     }));
   }
 
@@ -239,7 +241,7 @@ class App extends React.Component {
       let bpm = 200;
       const ticksPerBeat = (1 / bpm) * 60 * 1000;
       this.playIntervalId = window.setInterval(this.perBeat, ticksPerBeat);
-      this.setState({ beatIndex: 0 });
+      this.setState({ beatIndex: -1 });
     } else {
       window.clearInterval(this.playIntervalId);
       this.playIntervalId = null;
@@ -266,29 +268,21 @@ class App extends React.Component {
       }
     }
 
-    let newTable = [];
-    for (let r = 0; r < numRows; ++r) {
-      newTable.push(seq[r].slice());
-    }
+    let newTable = seq.slice();
     newTable[row][col] = newTable[row][col] ? 0 : 1;
     return newTable;
   }
 
   // TODO: do they have to be TOTAL copies?
   newSeqsFromClick(seqs, clickedSynthIx, row, col, numVoices) {
-    let newTables = [];
-    for (let synthIx = 0; synthIx < seqs.length; ++synthIx) {
-      if (synthIx === clickedSynthIx) {
-        newTables.push(this.newSeqFromClick(seqs[synthIx], row, col, numVoices));
-      } else {
-        let numRows = seqs[synthIx].length;
-        let newTable = [];
-        for (let r = 0; r < numRows; ++r) {
-          newTable.push(seqs[synthIx][r].slice());
-        }
-        newTables.push(newTable);
-      }
+    let newClickedSeq = this.newSeqFromClick(seqs[clickedSynthIx], row, col, numVoices);
+    if (newClickedSeq === null) {
+      // If no changes, return null to signify no changes.
+      return null;
     }
+
+    let newTables = seqs.slice();
+    newTables[clickedSynthIx] = newClickedSeq;
     return newTables;
   }
 
@@ -346,11 +340,6 @@ class App extends React.Component {
                 onClick={(r,c) => this.handleSynthSeqClick(s,r,c)} /> 
               <br />
             </div>)}
-        {/* <SequencerTable
-          setting={this.state.synthSeqTables[0]}
-          beatIx={this.state.beatIndex}
-          onClick={this.handleSynthSeqClick} />
-        <br /> */}
         <SequencerTable
           setting={this.state.samplerTable}
           beatIx={this.state.beatIndex}
