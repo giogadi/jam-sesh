@@ -18,6 +18,7 @@ struct ClientId(usize);
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct State {
     synth_sequences: Vec<Vec<Vec<i32>>>,
+    synth_cutoffs: Vec<f64>,
     sampler_sequence: Vec<Vec<i32>>
 }
 impl State {
@@ -27,6 +28,7 @@ impl State {
         const NUM_ROWS: usize = 14;
         let mut state = State {
             synth_sequences: vec![vec![vec![0; NUM_BEATS]; NUM_ROWS]; NUM_SYNTHS],
+            synth_cutoffs: vec![0.5; NUM_SYNTHS],
             sampler_sequence: vec![vec![0; NUM_BEATS]; 2]
         };
         state.synth_sequences[0][NUM_ROWS-1][0] = 1;

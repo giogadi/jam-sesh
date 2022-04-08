@@ -54,6 +54,36 @@ class SequencerTable extends React.Component {
   }
 }
 
+class SynthComponent extends React.Component {
+  constructor(props) {
+    super(props);
+    this.cutoffInput = React.createRef();
+  }
+
+  componentDidMount() {
+    // This uses the typical DOM's onchange event instead of React's. We want
+    // "only send an event after user lets go of control", which React's version
+    // does not do.
+    this.cutoffInput.current.onchange = ((e) => this.props.onCutoffGlobalUpdate(e.target.value));
+  }
+  
+  render() {
+    return (
+      <div>
+        <input ref={this.cutoffInput}
+          type="range"
+          value={this.props.cutoff}
+          onInput={(e) => this.props.onCutoffLocalUpdate(e.target.value)}
+          min="0" max="1" step="0.01"/>
+        <SequencerTable
+          setting={this.props.sequencerMatrix}
+          beatIx={this.props.beatIx}
+          onClick={this.props.onClick} /> 
+      </div>
+    );
+  }
+}
+
 function noteFrequency(note_ix) {
   const MAX_NOTE_INDEX = 70;
   if (note_ix > MAX_NOTE_INDEX || note_ix < 0) {
@@ -90,11 +120,16 @@ function openSocket() {
   });
 }
 
+function filterParamToValue(param) {
+  return param * 10000;
+}
+
 class App extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
       synthSeqTables: [],
+      synthCutoffs: [],
       samplerTable: [],
       beatIndex: -1
     };
@@ -111,6 +146,8 @@ class App extends React.Component {
         seqTable.push(row);
       }
       this.state.synthSeqTables.push(seqTable);
+
+      this.state.synthCutoffs.push(0.5);
     }
 
     const DEFAULT_NUM_SAMPLER_ROWS = 2;
@@ -132,6 +169,8 @@ class App extends React.Component {
     this.synthPerBeat = this.synthPerBeat.bind(this);
     this.samplerPerBeat = this.samplerPerBeat.bind(this);
     this.updateStateFromSocketEvent = this.updateStateFromSocketEvent.bind(this);
+    this.handleCutoffLocalUpdate = this.handleCutoffLocalUpdate.bind(this);
+    this.handleCutoffGlobalUpdate = this.handleCutoffGlobalUpdate.bind(this);
 
     this.playIntervalId = null;
   }
@@ -143,6 +182,11 @@ class App extends React.Component {
     // };
     // initSoundAsync();
     this.sound = await initSound();
+
+    // Set init sound props to match the ones in App state
+    for (let i = 0; i < this.state.synthCutoffs.length && i < this.sound.synths.length; ++i) {
+      this.sound.synths[i].filterDefault = filterParamToValue(this.state.synthCutoffs[i]);
+    }
 
     try {
       this.socket = await openSocket();
@@ -188,6 +232,7 @@ class App extends React.Component {
     }
     this.setState({
       synthSeqTables: newSynthSeqs,
+      synthCutoffs: update.synth_cutoffs,
       samplerTable: newSamplerSeq
     })
   }
@@ -256,6 +301,35 @@ class App extends React.Component {
     }
   }
 
+  handleCutoffLocalUpdate(synthIx, newCutoffParamStr) {
+    const newCutoffParam = parseFloat(newCutoffParamStr);
+    const newCutoffValue = filterParamToValue(newCutoffParam);
+    this.sound.synths[synthIx].filterDefault = newCutoffValue;
+
+    let newCutoffs = this.state.synthCutoffs.slice();
+    newCutoffs[synthIx] = newCutoffParam;
+    this.setState({
+      synthCutoffs: newCutoffs
+    });
+  }
+
+  handleCutoffGlobalUpdate(synthIx, newCutoffParam) {
+    // TODO: do I need to do the local update stuff too or can I just assume
+    // that the local update will have already run?
+    //
+    // TODO: this.state.synthCutoffs might be out-of-date, ugh.
+    if (this.socket !== null) {
+      let stateMsg = {
+        synth_sequences: this.state.synthSeqTables,
+        synth_cutoffs: this.state.synthCutoffs,
+        sampler_sequence: this.state.samplerTable
+      };
+      const stateMsgStr = JSON.stringify(stateMsg);
+      this.socket.send(stateMsgStr);
+      console.log("Sent " + stateMsgStr);
+    }
+  }
+
   // If it returns null, then no change to seq
   newSeqFromClick(seq, row, col, numVoices) {
     const numRows = seq.length;
@@ -306,6 +380,7 @@ class App extends React.Component {
     if (this.socket !== null) {
       let stateMsg = {
         synth_sequences: newTables,
+        synth_cutoffs: this.state.synthCutoffs,
         sampler_sequence: this.state.samplerTable
       };
       const stateMsgStr = JSON.stringify(stateMsg);
@@ -327,6 +402,7 @@ class App extends React.Component {
     if (this.socket !== null) {
       let stateMsg = {
         synth_sequences: this.state.synthSeqTables,
+        synth_cutoffs: this.state.synthCutoffs,
         sampler_sequence: newTable
       };
       const stateMsgStr = JSON.stringify(stateMsg);
@@ -336,15 +412,23 @@ class App extends React.Component {
   }
 
   render() {
+    let synthIxs = [];
+    for (let i = 0; i < this.state.synthSeqTables.length; ++i) {
+      synthIxs.push(i);
+    }
     return (
       <div>
         <button onClick={this.handlePlayButtonClick}>Play/Stop</button>
-        { [0,1].map((s) =>
+        { synthIxs.map((s) =>
             <div key={s.toString()}>
-              <SequencerTable
-                setting={this.state.synthSeqTables[s]}
+              <SynthComponent
+                sequencerMatrix={this.state.synthSeqTables[s]}
+                cutoff={this.state.synthCutoffs[s]}
                 beatIx={this.state.beatIndex}
-                onClick={(r,c) => this.handleSynthSeqClick(s,r,c)} /> 
+                onClick={(r,c) => this.handleSynthSeqClick(s,r,c)}
+                onCutoffLocalUpdate={(cutoff) => this.handleCutoffLocalUpdate(s,cutoff)}
+                onCutoffGlobalUpdate={(cutoff) => this.handleCutoffGlobalUpdate(s,cutoff)}  
+              /> 
               <br />
             </div>)}
         <SequencerTable
