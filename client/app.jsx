@@ -2,7 +2,12 @@
 
 class SequencerTable extends React.Component {
   constructor(props) {
-    super(props); 
+    super(props);
+    this.tableContainer = React.createRef();
+  }
+
+  componentDidMount() {
+    this.tableContainer.current.scrollTop = this.tableContainer.current.scrollHeight;
   }
 
   render() {
@@ -28,21 +33,23 @@ class SequencerTable extends React.Component {
       return className;
     };
     return (
-      <table className="sequencerTable">
-        <tbody>
-          { rows.map((r) =>
-              <tr key={r.toString()}>
-                { columns.map((c) =>
-                  <td className="sequencerTd" key={c.toString()}>
-                    {
-                      <button className={getButtonClass(r,c,this.props.beatIx)} 
-                        onClick={() => this.props.onClick(r,c)}
-                      />
-                    }
-                  </td>)}
-              </tr>)}
-        </tbody>
-      </table>
+      <div className="tableContainer" ref={this.tableContainer}>
+        <table className="sequencerTable">
+          <tbody>
+            { rows.map((r) =>
+                <tr key={r.toString()}>
+                  { columns.map((c) =>
+                    <td className="sequencerTd" key={c.toString()}>
+                      {
+                        <button className={getButtonClass(r,c,this.props.beatIx)} 
+                          onClick={() => this.props.onClick(r,c)}
+                        />
+                      }
+                    </td>)}
+                </tr>)}
+          </tbody>
+        </table>
+      </div>
     );
   }
 }

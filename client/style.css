@@ -1,3 +1,18 @@
+:root {
+    --seq-cell-size: 20px;
+}
+
+::-webkit-scrollbar {
+    -webkit-appearance: none;
+    width: 7px;
+}
+
+::-webkit-scrollbar-thumb {
+    border-radius: 4px;
+    background-color: rgba(0,0,0,.5);
+    -webkit-box-shadow: 0 0 1px rgba(255,255,255,.5);
+}
+
 .sequencerTable {
     table-layout: fixed;
     border-collapse: collapse;
@@ -16,10 +31,10 @@
     font-size: 24px;
     font-weight: bold;
     line-height: 34px;
-    height: 20px;
+    height: var(--seq-cell-size);
     padding: 0;
     text-align: center;
-    width: 20px;
+    width: var(--seq-cell-size);
 }
 
 .sequencerCellActive {
@@ -33,4 +48,11 @@
 }
 .sequencerCellInactiveOnBeat {
     background: rgb(100,100,100,0.5);
+}
+
+.tableContainer {
+    border: 2px solid #000;
+    width: calc(16 * var(--seq-cell-size) + 50px);
+    height: calc(8 * var(--seq-cell-size) + 50px);
+    overflow: scroll;
 }
