@@ -173,6 +173,8 @@ class App extends React.Component {
     this.handleCutoffGlobalUpdate = this.handleCutoffGlobalUpdate.bind(this);
 
     this.playIntervalId = null;
+
+    this.clientId = null;
   }
 
   async componentDidMount() {
@@ -202,39 +204,67 @@ class App extends React.Component {
   updateStateFromSocketEvent(event) {
     let update = JSON.parse(event.data);
     console.log("Received message " + JSON.stringify(update));
-    let newSynthSeqs = [];
-    let numSynths = update.synth_sequences.length;
-    for (let s = 0; s < numSynths; ++s) {
-      let synthSeq = [];
-      let numRows = update.synth_sequences[s].length;
-      let numCols = update.synth_sequences[s][0].length;
-      for (let r = 0; r < numRows; ++r) {
-        let row = [];
-        for (let c = 0; c < numCols; ++c) {
-          row.push(update.synth_sequences[s][r][c]);
+    if (update.update_type == "sync") {
+      let newState = update.state;
+      let newSynthSeqs = [];
+      let numSynths = newState.synth_sequences.length;
+      for (let s = 0; s < numSynths; ++s) {
+        let synthSeq = [];
+        let numRows = newState.synth_sequences[s].length;
+        let numCols = newState.synth_sequences[s][0].length;
+        for (let r = 0; r < numRows; ++r) {
+          let row = [];
+          for (let c = 0; c < numCols; ++c) {
+            row.push(newState.synth_sequences[s][r][c]);
+          }
+          synthSeq.push(row);
         }
-        synthSeq.push(row);
+        newSynthSeqs.push(synthSeq);
       }
-      newSynthSeqs.push(synthSeq);
-    }
 
-    let newSamplerSeq = [];
-    {
-      let numRows = update.sampler_sequence.length;
-      let numCols = update.sampler_sequence[0].length;
-      for (let r = 0; r < numRows; ++r) {
-        let row = [];
-        for (let c = 0; c < numCols; ++c) {
-          row.push(update.sampler_sequence[r][c]);
+      let newSamplerSeq = [];
+      {
+        let numRows = newState.sampler_sequence.length;
+        let numCols = newState.sampler_sequence[0].length;
+        for (let r = 0; r < numRows; ++r) {
+          let row = [];
+          for (let c = 0; c < numCols; ++c) {
+            row.push(newState.sampler_sequence[r][c]);
+          }
+          newSamplerSeq.push(row);
         }
-        newSamplerSeq.push(row);
       }
+      this.setState({
+        synthSeqTables: newSynthSeqs,
+        synthCutoffs: newState.synth_cutoffs,
+        samplerTable: newSamplerSeq
+      })
+    } else if (update.update_type == "synth_seq") {
+      // TODO: do validation of voices
+      this.setState((oldState,props) => {
+        let newSynthSeqs = oldState.synthSeqTables.slice();
+        newSynthSeqs[update.synth_ix][update.cell_ix][update.beat_ix] = update.on ? 1 : 0;
+        return {
+          synthSeqTabls: newSynthSeqs
+        };
+      });
+    } else if (update.update_type == "sampler_seq") {
+      this.setState((oldState,props) => {
+        let newSeq = oldState.samplerTable.slice();
+        newSeq[update.cell_ix][update.beat_ix] = update.on ? 1 : 0;
+        return {
+          samplerTable: newSeq
+        };
+      })
+    } else if (update.update_type == "filter_cutoff") {
+      this.setState((oldState,props) => {
+        let newCutoffs = oldState.synthCutoffs.slice();
+        newCutoffs[update.synth_ix] = update.value;
+        return {
+          synthCutoffs: newCutoffs
+        };
+      });
     }
-    this.setState({
-      synthSeqTables: newSynthSeqs,
-      synthCutoffs: update.synth_cutoffs,
-      samplerTable: newSamplerSeq
-    })
   }
 
   getNumVoices(synthIx) {
@@ -313,20 +343,18 @@ class App extends React.Component {
     });
   }
 
-  handleCutoffGlobalUpdate(synthIx, newCutoffParam) {
+  handleCutoffGlobalUpdate(synthIx, newCutoffParamStr) {
     // TODO: do I need to do the local update stuff too or can I just assume
     // that the local update will have already run?
-    //
-    // TODO: this.state.synthCutoffs might be out-of-date, ugh.
     if (this.socket !== null) {
-      let stateMsg = {
-        synth_sequences: this.state.synthSeqTables,
-        synth_cutoffs: this.state.synthCutoffs,
-        sampler_sequence: this.state.samplerTable
-      };
-      const stateMsgStr = JSON.stringify(stateMsg);
-      this.socket.send(stateMsgStr);
-      console.log("Sent " + stateMsgStr);
+      let msg = {
+        update_type: "filter_cutoff",
+        synth_ix: synthIx,
+        value: parseFloat(newCutoffParamStr)
+      }
+      const jsonStr = JSON.stringify(msg);
+      this.socket.send(jsonStr);
+      console.log("Sent " + jsonStr);
     }
   }
 
@@ -378,14 +406,16 @@ class App extends React.Component {
     });
 
     if (this.socket !== null) {
-      let stateMsg = {
-        synth_sequences: newTables,
-        synth_cutoffs: this.state.synthCutoffs,
-        sampler_sequence: this.state.samplerTable
-      };
-      const stateMsgStr = JSON.stringify(stateMsg);
-      this.socket.send(stateMsgStr);
-      console.log("Sent " + stateMsgStr);
+      const msg = {
+        update_type: "synth_seq",
+        synth_ix: synthIx,
+        beat_ix: col,
+        cell_ix: row,
+        on: (newTables[synthIx][row][col] === 1)
+      }
+      const jsonMsg = JSON.stringify(msg);
+      this.socket.send(jsonMsg);
+      console.log("Sent " + jsonMsg);
     }
   }
 
@@ -400,14 +430,15 @@ class App extends React.Component {
     });
 
     if (this.socket !== null) {
-      let stateMsg = {
-        synth_sequences: this.state.synthSeqTables,
-        synth_cutoffs: this.state.synthCutoffs,
-        sampler_sequence: newTable
-      };
-      const stateMsgStr = JSON.stringify(stateMsg);
-      this.socket.send(stateMsgStr);
-      console.log("Sent " + stateMsgStr);
+      const msg = {
+        update_type: "sampler_seq",
+        beat_ix: col,
+        cell_ix: row,
+        on: (newTable[row][col] === 1)
+      }
+      const jsonMsg = JSON.stringify(msg);
+      this.socket.send(jsonMsg);
+      console.log("Sent " + jsonMsg);
     }
   }
 
