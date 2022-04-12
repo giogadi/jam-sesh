@@ -20,7 +20,7 @@ struct State {
     synth_sequences: Vec<Vec<Vec<i32>>>,
     synth_cutoffs: Vec<f64>,
     sampler_sequence: Vec<Vec<i32>>,
-    connected_clients: Vec<i32>
+    connected_clients: Vec<(i32,String)>
 }
 impl State {
     fn new() -> State {
@@ -43,7 +43,9 @@ impl State {
 
 #[derive(Debug, Clone)]
 enum ParsedUpdate {
-    Connect,
+    Connect {
+        username: String
+    },
     Disconnect,
     SynthSeq {
         synth_ix: usize,
@@ -90,23 +92,27 @@ fn parse_msg_from_client(msg: &str) -> Option<ParsedUpdate> {
             synth_ix: v["synth_ix"].as_i64().unwrap() as usize,
             value: v["value"].as_f64().unwrap()
         })
+    } else if update_type == "new_client" {
+        return Option::Some(ParsedUpdate::Connect {
+            username: String::from(v["username"].as_str().unwrap())
+        });
+    } else if update_type == "disconnect" {
+        return Option::Some(ParsedUpdate::Disconnect);
     }
     return Option::None;
 }
 
 fn update_main_state_from_client(update: &ParsedAndOrigUpdateFromClient, state: &mut State, connections: &mut Vec<ClientInfo>) {
-    match update.parsed_update {
-        ParsedUpdate::Connect => {
-            // state.connected_clients.push(update.client_id.0 as i32);
-            // TODO: WHERE DO WE UPDATE state.connected_client_ids or whatever?!?!?!
-            panic!("ParsedUpdate::Connect should never happen");
+    match &update.parsed_update {
+        ParsedUpdate::Connect {username} => {
+            state.connected_clients.push((update.client_id.0 as i32,username.clone()));
         }
         ParsedUpdate::Disconnect => {
             // TODO: can these 2 be the same list?
 
             // Remove from list of connections sent to clients
             let client_ix =
-                state.connected_clients.iter().position(|&x| x == (update.client_id.0 as i32)).unwrap();
+                state.connected_clients.iter().position(|&(id,_)| id == (update.client_id.0 as i32)).unwrap();
             state.connected_clients.swap_remove(client_ix);
 
             // Remove from main's master list of connections
@@ -119,13 +125,13 @@ fn update_main_state_from_client(update: &ParsedAndOrigUpdateFromClient, state: 
         }
         ParsedUpdate::SynthSeq { synth_ix, beat_ix, cell_ix, on } => {
             // TODO: do validation of voices.
-            state.synth_sequences[synth_ix][cell_ix][beat_ix] = if on { 1 } else { 0 };
+            state.synth_sequences[*synth_ix][*cell_ix][*beat_ix] = if *on { 1 } else { 0 };
         }
         ParsedUpdate::SamplerSeq { beat_ix, cell_ix, on } => {
-            state.sampler_sequence[cell_ix][beat_ix] = if on { 1 } else { 0 };
+            state.sampler_sequence[*cell_ix][*beat_ix] = if *on { 1 } else { 0 };
         }
         ParsedUpdate::SynthFilterCutoff { synth_ix, value } => {
-            state.synth_cutoffs[synth_ix] = value;
+            state.synth_cutoffs[*synth_ix] = *value;
         }
     }
 }
@@ -150,7 +156,8 @@ struct FullStateSyncPreJson {
 #[derive(Serialize)]
 struct NewConnectionPreJson {
     update_type: &'static str,
-    client_id: i32
+    client_id: i32,
+    username: String
 }
 
 #[derive(Serialize)]
@@ -161,10 +168,14 @@ struct DisconnectPreJson {
 
 fn maybe_relay_update_from_main_to_client(
     from_main: &mpsc::Receiver<UpdateFromMain>,
-    to_client: &mut websocket::sender::Writer<std::net::TcpStream>) {
+    to_client: &mut websocket::sender::Writer<std::net::TcpStream>,
+    has_received_id: &mut bool,
+    has_received_sync: &mut bool) {
     let result = from_main.try_recv();
     match result {
         Ok(UpdateFromMain::FullStateSync(state)) => {
+            assert!(*has_received_id && !*has_received_sync, "{} {}", *has_received_id, *has_received_sync);
+            *has_received_sync = true;
             let pre_json_msg = FullStateSyncPreJson {
                 update_type: "sync",
                 state: state
@@ -174,6 +185,14 @@ fn maybe_relay_update_from_main_to_client(
             to_client.send_message(&OwnedMessage::Text(json_msg)).unwrap();
         }
         Ok(UpdateFromMain::DiffUpdate(update)) => {
+            if !*has_received_id {
+                if let ParsedUpdate::Connect{..} = update.parsed_update {
+                    *has_received_id = true;
+                } else {
+                    println!("client received diff before full sync. ignoring.");
+                    return;
+                }
+            }
             println!("Sent {}", update.original_msg);
             to_client.send_message(&OwnedMessage::Text(update.original_msg)).unwrap();
         }
@@ -188,7 +207,7 @@ fn maybe_relay_update_from_main_to_client(
 fn maybe_relay_update_from_client_to_main(
     to_main: &mpsc::Sender<ParsedAndOrigUpdateFromClient>,
     from_client: &mut websocket::receiver::Reader<std::net::TcpStream>,
-    from_client_id: ClientId)
+    from_client_id: ClientId, have_received_sync: bool)
     -> bool {
     let result = from_client
         .receiver
@@ -197,9 +216,25 @@ fn maybe_relay_update_from_client_to_main(
         Ok(OwnedMessage::Text(s)) => {
             println!("Received: {} {}", from_client_id.0, &s);
             let parsed_update = parse_msg_from_client(&s).unwrap();
+            let orig_msg: String;
+            if !have_received_sync {
+                if let ParsedUpdate::Connect {username} = &parsed_update {
+                    // Construct the connect message we'll use. 
+                    let pre_json_msg = NewConnectionPreJson {
+                        update_type: "new_client",
+                        client_id: from_client_id.0 as i32,
+                        username: username.clone()
+                    };
+                    orig_msg = serde_json::to_string(&pre_json_msg).unwrap();
+                } else {
+                    panic!("first message from client wasn't connect: {}", s);
+                }            
+            } else {
+                orig_msg = s;
+            }
             to_main.send(ParsedAndOrigUpdateFromClient {
                 parsed_update: parsed_update,
-                original_msg: s,
+                original_msg: orig_msg,
                 client_id: from_client_id
             }).unwrap();
             return false;
@@ -247,14 +282,16 @@ fn serve_client(
         .set_read_timeout(Some(std::time::Duration::new(1, 0)))
         .ok();
     let (mut from_client, mut to_client) = client.split().unwrap();
+    let mut have_received_id = false;
+    let mut have_received_sync = false;
     loop {
         let disconnected = maybe_relay_update_from_client_to_main(
-            &to_main, &mut from_client, id);
+            &to_main, &mut from_client, id, have_received_sync);
         if disconnected {
             break;
         }
         maybe_relay_update_from_main_to_client(
-            &from_main, &mut to_client);
+            &from_main, &mut to_client, &mut have_received_id, &mut have_received_sync);
     }
 }
 
@@ -266,7 +303,6 @@ fn main() {
     let state: Arc<Mutex<State>> = Arc::new(Mutex::new(State::new()));
     // TODO: I hate these names
     let thread_connections = Arc::clone(&connections);
-    let thread_state = Arc::clone(&state);
     thread::spawn(move || {
         let mut next_id = 0;
         for request in server.filter_map(Result::ok) {
@@ -297,27 +333,6 @@ fn main() {
             thread::spawn(move || {
                 serve_client(to_main_clone, from_main, client, id);
             });
-            // Construct the connect message we'll use. 
-            let pre_json_msg = NewConnectionPreJson {
-                update_type: "new_client",
-                client_id: id.0 as i32
-            };
-            let new_connect_msg = serde_json::to_string(&pre_json_msg).unwrap();
-            let msg_to_client = UpdateFromMain::DiffUpdate(ParsedAndOrigUpdateFromClient {
-                parsed_update: ParsedUpdate::Connect,
-                original_msg: new_connect_msg,
-                client_id: id
-            });
-            // Send the connect message to EVERYONE and then send the state message to the new client
-            for client_info in connections.iter() {
-                client_info.to_client_thread.send(msg_to_client.clone()).unwrap();
-            }
-
-            // NOW send the state to the new client
-            let mut state = thread_state.lock().unwrap();
-            state.connected_clients.push(id.0 as i32);
-            let msg_to_client = UpdateFromMain::FullStateSync(state.clone());
-            connections.last().unwrap().to_client_thread.send(msg_to_client).unwrap();
 
             next_id += 1;
         }
@@ -327,14 +342,23 @@ fn main() {
         let mut connections = connections.lock().unwrap();
         let mut server_state = state.lock().unwrap();
         update_main_state_from_client(&msg_from_client, &mut server_state, &mut connections);
+
         // Now send the update to all the clients
+        // TODO: use enumerate instead of this ugly thing
+        let mut from_client_ix = 0;
         for client_info in connections.iter() {
-            if client_info.id == msg_from_client.client_id {
-                continue;
+            if client_info.id != msg_from_client.client_id {
+                from_client_ix += 1;
             }
             client_info.to_client_thread.send(
                 UpdateFromMain::DiffUpdate(msg_from_client.clone()))
                 .unwrap();
+        }
+
+        // If it was a connect message, send the state sync update directly to that client.
+        if let ParsedUpdate::Connect {..} = msg_from_client.parsed_update {
+            let msg_to_client = UpdateFromMain::FullStateSync(server_state.clone());
+            connections[from_client_ix].to_client_thread.send(msg_to_client).unwrap();
         }
     }
 }

@@ -84,6 +84,16 @@ class SynthComponent extends React.Component {
   }
 }
 
+function UserList(props) {
+  let listItems = props.users.map((item) => <li key={item[0]}>{item[1]}</li>);
+  return (
+    <div>
+      <p>Connected users:</p>
+      <ul>{listItems}</ul>
+    </div>
+  );
+}
+
 function noteFrequency(note_ix) {
   const MAX_NOTE_INDEX = 70;
   if (note_ix > MAX_NOTE_INDEX || note_ix < 0) {
@@ -131,6 +141,7 @@ class App extends React.Component {
       synthSeqTables: [],
       synthCutoffs: [],
       samplerTable: [],
+      users: [],
       beatIndex: -1
     };
 
@@ -195,18 +206,18 @@ class App extends React.Component {
 
     try {
       this.socket = await openSocket();
+      // Send username over socket
+      let msg = {
+        update_type: "new_client",
+        username: this.username
+      }
+      const jsonStr = JSON.stringify(msg);
+      this.socket.send(jsonStr);
+      console.log("Sent " + jsonStr);
+      
     } catch (e) {
       this.socket = null;
     }
-
-    // Send username over socket
-    let msg = {
-      update_type: "new_client",
-      username: this.username
-    }
-    const jsonStr = JSON.stringify(msg);
-    this.socket.send(jsonStr);
-    console.log("Sent " + jsonStr);
     
     if (this.socket !== null) {
       this.socket.onmessage = this.updateStateFromSocketEvent;
@@ -216,7 +227,27 @@ class App extends React.Component {
   updateStateFromSocketEvent(event) {
     let update = JSON.parse(event.data);
     console.log("Received message " + JSON.stringify(update));
-    if (update.update_type == "sync") {
+    if (update.update_type == "new_client") {
+      if (this.clientId === null) {
+        this.clientId = update.client_id;
+      } else {
+        this.setState((oldState, props) => {
+          let newUsers = oldState.users.slice();
+          newUsers.push([update.client_id,update.username]);
+          return { users: newUsers };
+        });
+      }
+    } else if (update.update_type == "disconnect") {
+      this.setState((oldState, props) => {
+        let newUsers = [];
+        for (let i = 0; i < oldState.users.length; ++i) {
+          if (oldState.users[i][0] !== update.client_id) {
+            newUsers.push(oldState.users[i]);
+          }
+        }
+        return { users: newUsers };
+      });
+    } else if (update.update_type == "sync") {
       let newState = update.state;
       let newSynthSeqs = [];
       let numSynths = newState.synth_sequences.length;
@@ -249,33 +280,37 @@ class App extends React.Component {
       this.setState({
         synthSeqTables: newSynthSeqs,
         synthCutoffs: newState.synth_cutoffs,
-        samplerTable: newSamplerSeq
+        samplerTable: newSamplerSeq,
+        users: newState.connected_clients
       })
-    } else if (update.update_type == "synth_seq") {
-      // TODO: do validation of voices
-      this.setState((oldState,props) => {
-        let newSynthSeqs = oldState.synthSeqTables.slice();
-        newSynthSeqs[update.synth_ix][update.cell_ix][update.beat_ix] = update.on ? 1 : 0;
-        return {
-          synthSeqTabls: newSynthSeqs
-        };
-      });
-    } else if (update.update_type == "sampler_seq") {
-      this.setState((oldState,props) => {
-        let newSeq = oldState.samplerTable.slice();
-        newSeq[update.cell_ix][update.beat_ix] = update.on ? 1 : 0;
-        return {
-          samplerTable: newSeq
-        };
-      })
-    } else if (update.update_type == "filter_cutoff") {
-      this.setState((oldState,props) => {
-        let newCutoffs = oldState.synthCutoffs.slice();
-        newCutoffs[update.synth_ix] = update.value;
-        return {
-          synthCutoffs: newCutoffs
-        };
-      });
+    }
+    if (update.client_id !== this.client_id) {
+      if (update.update_type == "synth_seq") {
+        // TODO: do validation of voices
+        this.setState((oldState,props) => {
+          let newSynthSeqs = oldState.synthSeqTables.slice();
+          newSynthSeqs[update.synth_ix][update.cell_ix][update.beat_ix] = update.on ? 1 : 0;
+          return {
+            synthSeqTabls: newSynthSeqs
+          };
+        });
+      } else if (update.update_type == "sampler_seq") {
+        this.setState((oldState,props) => {
+          let newSeq = oldState.samplerTable.slice();
+          newSeq[update.cell_ix][update.beat_ix] = update.on ? 1 : 0;
+          return {
+            samplerTable: newSeq
+          };
+        })
+      } else if (update.update_type == "filter_cutoff") {
+        this.setState((oldState,props) => {
+          let newCutoffs = oldState.synthCutoffs.slice();
+          newCutoffs[update.synth_ix] = update.value;
+          return {
+            synthCutoffs: newCutoffs
+          };
+        });
+      }
     }
   }
 
@@ -360,6 +395,7 @@ class App extends React.Component {
     // that the local update will have already run?
     if (this.socket !== null) {
       let msg = {
+        client_id: this.clientId,
         update_type: "filter_cutoff",
         synth_ix: synthIx,
         value: parseFloat(newCutoffParamStr)
@@ -419,6 +455,7 @@ class App extends React.Component {
 
     if (this.socket !== null) {
       const msg = {
+        client_id: this.clientId,
         update_type: "synth_seq",
         synth_ix: synthIx,
         beat_ix: col,
@@ -443,6 +480,7 @@ class App extends React.Component {
 
     if (this.socket !== null) {
       const msg = {
+        client_id: this.clientId,
         update_type: "sampler_seq",
         beat_ix: col,
         cell_ix: row,
@@ -461,6 +499,7 @@ class App extends React.Component {
     }
     return (
       <div>
+        <UserList users={this.state.users} />
         <button onClick={this.handlePlayButtonClick}>Play/Stop</button>
         { synthIxs.map((s) =>
             <div key={s.toString()}>
