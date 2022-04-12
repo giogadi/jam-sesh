@@ -133,6 +133,9 @@ class App extends React.Component {
       samplerTable: [],
       beatIndex: -1
     };
+
+    this.username = props.username;
+
     const DEFAULT_NUM_SYNTHS = 2;
     for (let synthIx = 0; synthIx < DEFAULT_NUM_SYNTHS; ++synthIx) {
       let seqTable = [];
@@ -195,6 +198,15 @@ class App extends React.Component {
     } catch (e) {
       this.socket = null;
     }
+
+    // Send username over socket
+    let msg = {
+      update_type: "new_client",
+      username: this.username
+    }
+    const jsonStr = JSON.stringify(msg);
+    this.socket.send(jsonStr);
+    console.log("Sent " + jsonStr);
     
     if (this.socket !== null) {
       this.socket.onmessage = this.updateStateFromSocketEvent;
@@ -473,18 +485,24 @@ class App extends React.Component {
 
 async function main() {
   // Let's wait for a mouse click before doing anything
-  let msg = document.getElementById('message');
-  msg.innerHTML = 'Click to start';
+  // let msg = document.getElementById('message');
+  // msg.innerHTML = 'Click to start';
+  let submitButton = document.getElementById('submit_name');
   const waitForClick = () =>
       new Promise((resolve) => {
-          window.addEventListener('click', () => resolve(), {once: true});
+          submitButton.addEventListener('click', () => resolve(), {once: true});
       });
   await waitForClick();
-  msg.innerHTML = '';
+  let usernameField = document.getElementById('name');
+  let username = usernameField.value;
+
+  document.getElementById('message').remove();
+  usernameField.remove();
+  submitButton.remove();
 
   const domContainer = document.querySelector('#root');
   const root = ReactDOM.createRoot(domContainer);
-  root.render(<App />);
+  root.render(<App username={username}/>);
 }
 
 main();

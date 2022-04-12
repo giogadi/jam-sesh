@@ -1,8 +1,9 @@
-* scrollbar on synth
-* Change from passing entire state to just the state changes
-  * NOTE: this will require actual state management in the multiplayer server
-  * Alternatively, consider just sending a compressed state packet
-* multiple sequencers in react app
+* Give clients names
+* Add conflict resolution to server (and client too?)
+  * Need a way to unit test the server!!!
+* Refactor server so the hacky on-connect stuff is handled in the server's "main loop"
+* Have state update send a sparse matrix for the sequences
+* Investigate latency of first state update to newly connected clients
 * Investigate potential latency in threads for doing from_client_to_main and then from_main_to_client in sync essentially.
 * Compile JSX to JS and stop including BABEL
 * Customize synth sound
