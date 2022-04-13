@@ -88,18 +88,28 @@ class SynthComponent extends React.Component {
   }
   
   render() {
+    let sliderStyle = {};
+    let sliderClass = "filterSlider";
+    if (this.props.cutoffHighlight !== null) {
+      let color = CLIENT_COLORS[this.props.cutoffHighlight % CLIENT_COLORS.length];
+      sliderStyle = { backgroundColor: color };
+    }
+
     return (
       <div>
-        <input ref={this.cutoffInput}
-          type="range"
-          value={this.props.cutoff}
-          onInput={(e) => this.props.onCutoffLocalUpdate(e.target.value)}
-          min="0" max="1" step="0.01"/>
+        <span className={sliderClass} style={sliderStyle}>
+          <input ref={this.cutoffInput}
+            type="range"
+            value={this.props.cutoff}
+            onInput={(e) => this.props.onCutoffLocalUpdate(e.target.value)}
+            min="0" max="1" step="0.01"
+          />
+        </span>        
         <SequencerTable
           setting={this.props.sequencerMatrix}
           beatIx={this.props.beatIx}
           onClick={this.props.onClick}
-          userHighlights={this.props.userHighlights} /> 
+          userHighlights={this.props.seqHighlights} /> 
       </div>
     );
   }
@@ -260,7 +270,7 @@ class App extends React.Component {
           newUsers.push({
             id: update.client_id,
             name: update.username,
-            last_touched: null
+            lastTouched: null
           });
           return { users: newUsers };
         });
@@ -311,7 +321,7 @@ class App extends React.Component {
         newUsers.push({
           id: newState.connected_clients[i][0],
           name: newState.connected_clients[i][1],
-          last_touched: null
+          lastTouched: null
         });
       }
 
@@ -331,8 +341,8 @@ class App extends React.Component {
           let newUsers = oldState.users.slice();
           for (let i = 0; i < newUsers.length; ++i) {
             if (newUsers[i].id === update.client_id) {
-              newUsers[i].last_touched = {
-                type: "synth",
+              newUsers[i].lastTouched = {
+                type: "synth_seq",
                 synthIx: update.synth_ix,
                 row: update.cell_ix,
                 col: update.beat_ix
@@ -348,16 +358,38 @@ class App extends React.Component {
         this.setState((oldState,props) => {
           let newSeq = oldState.samplerTable.slice();
           newSeq[update.cell_ix][update.beat_ix] = update.on ? 1 : 0;
+          let newUsers = oldState.users.slice();
+          for (let i = 0; i < newUsers.length; ++i) {
+            if (newUsers[i].id === update.client_id) {
+              newUsers[i].lastTouched = {
+                type: "sampler_seq",
+                row: update.cell_ix,
+                col: update.beat_ix
+              };
+            }
+          }
           return {
-            samplerTable: newSeq
+            samplerTable: newSeq,
+            users: newUsers
           };
         })
       } else if (update.update_type == "filter_cutoff") {
         this.setState((oldState,props) => {
           let newCutoffs = oldState.synthCutoffs.slice();
           newCutoffs[update.synth_ix] = update.value;
+          let newUsers = oldState.users.slice();
+          for (let i = 0; i < newUsers.length; ++i) {
+            if (newUsers[i].id === update.client_id) {
+              newUsers[i].lastTouched = {
+                type: "synth_cutoff",
+                synthIx: update.synth_ix,
+                value: update.value
+              };
+            }
+          }
           return {
-            synthCutoffs: newCutoffs
+            synthCutoffs: newCutoffs,
+            users: newUsers
           };
         });
       }
@@ -544,21 +576,32 @@ class App extends React.Component {
 
   render() {
     let synthIxs = [];
-    let userHighlights = [];
+    let synthSeqHighlights = [];
+    let synthCutoffHighlights = [];
     for (let i = 0; i < this.state.synthSeqTables.length; ++i) {
       synthIxs.push(i);
-      userHighlights.push([]);
+      synthSeqHighlights.push([]);
+      synthCutoffHighlights.push(null);
     }
+    let samplerSeqHighlights = [];
     for (let i = 0; i < this.state.users.length; ++i) {
-      let lastTouched = this.state.users[i].last_touched;
+      let lastTouched = this.state.users[i].lastTouched;
       if (lastTouched !== null) {
         let touchType = lastTouched.type;
-        if (touchType === "synth") {
-          userHighlights[lastTouched.synthIx].push({
+        if (touchType === "synth_seq") {
+          synthSeqHighlights[lastTouched.synthIx].push({
             id: this.state.users[i].id,
             row: lastTouched.row,
             col: lastTouched.col
           });
+        } else if (touchType === "sampler_seq") {
+          samplerSeqHighlights.push({
+            id: this.state.users[i].id,
+            row: lastTouched.row,
+            col: lastTouched.col
+          });
+        } else if (touchType === "synth_cutoff") {
+          synthCutoffHighlights[lastTouched.synthIx] = this.state.users[i].id;
         }
       }
     }
@@ -575,7 +618,8 @@ class App extends React.Component {
                 onClick={(r,c) => this.handleSynthSeqClick(s,r,c)}
                 onCutoffLocalUpdate={(cutoff) => this.handleCutoffLocalUpdate(s,cutoff)}
                 onCutoffGlobalUpdate={(cutoff) => this.handleCutoffGlobalUpdate(s,cutoff)}  
-                userHighlights={userHighlights[s]}
+                seqHighlights={synthSeqHighlights[s]}
+                cutoffHighlight={synthCutoffHighlights[s]}
               /> 
               <br />
             </div>)}
@@ -583,7 +627,7 @@ class App extends React.Component {
           setting={this.state.samplerTable}
           beatIx={this.state.beatIndex}
           onClick={this.handleSamplerClick} 
-          userHighlights={[]}
+          userHighlights={samplerSeqHighlights}
         />
       </div>
     );
