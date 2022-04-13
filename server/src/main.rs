@@ -279,7 +279,7 @@ fn serve_client(
     id: ClientId) {
     client
         .stream_ref()
-        .set_read_timeout(Some(std::time::Duration::new(1, 0)))
+        .set_read_timeout(Some(std::time::Duration::new(0, 1)))
         .ok();
     let (mut from_client, mut to_client) = client.split().unwrap();
     let mut have_received_id = false;
@@ -352,7 +352,7 @@ fn main() {
             }
             client_info.to_client_thread.send(
                 UpdateFromMain::DiffUpdate(msg_from_client.clone()))
-                .unwrap();
+                .unwrap();               
         }
 
         // If it was a connect message, send the state sync update directly to that client.
