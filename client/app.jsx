@@ -1,5 +1,7 @@
 'use strict';
 
+const CLIENT_COLORS = ['cyan', 'magenta', 'orange', 'lightblue', 'navy', 'purple', 'aquamarine', 'darkgreen'];
+
 class SequencerTable extends React.Component {
   constructor(props) {
     super(props);
@@ -27,11 +29,29 @@ class SequencerTable extends React.Component {
       let className = this.props.setting[r][c] ?
         "sequencerCell sequencerCellActive" :
         "sequencerCell sequencerCellInactive";
+      let highlights = this.props.userHighlights;
+      for (let i = 0; i < highlights.length; ++i) {
+        if (highlights[i].row === r && highlights[i].col === c) {
+          className += " highlightCell";
+          break;
+        }
+      }
       if (onBeat) {
-        className += "OnBeat";
+        className += " OnBeat";
       }
       return className;
     };
+
+    let getButtonStyle = (r,c) => {
+      let highlights = this.props.userHighlights;
+      for (let i = 0; i < highlights.length; ++i) {
+        if (highlights[i].row === r && highlights[i].col === c) {
+           return { borderColor: CLIENT_COLORS[highlights[i].id % CLIENT_COLORS.length] };
+        }
+      }
+      return {};
+    };
+
     return (
       <div className="tableContainer" ref={this.tableContainer}>
         <table className="sequencerTable">
@@ -41,7 +61,7 @@ class SequencerTable extends React.Component {
                   { columns.map((c) =>
                     <td className="sequencerTd" key={c.toString()}>
                       {
-                        <button className={getButtonClass(r,c,this.props.beatIx)} 
+                        <button style={getButtonStyle(r,c)} className={getButtonClass(r,c,this.props.beatIx)} 
                           onClick={() => this.props.onClick(r,c)}
                         />
                       }
@@ -78,14 +98,18 @@ class SynthComponent extends React.Component {
         <SequencerTable
           setting={this.props.sequencerMatrix}
           beatIx={this.props.beatIx}
-          onClick={this.props.onClick} /> 
+          onClick={this.props.onClick}
+          userHighlights={this.props.userHighlights} /> 
       </div>
     );
   }
 }
 
 function UserList(props) {
-  let listItems = props.users.map((item) => <li key={item[0]}>{item[1]}</li>);
+  let getItemStyle = (id) => {
+    return { backgroundColor: CLIENT_COLORS[id % CLIENT_COLORS.length] };
+  };
+  let listItems = props.users.map((item) => <li key={item.id}><span style={getItemStyle(item.id)}>{item.name}</span></li>);
   return (
     <div>
       <p>Connected users:</p>
@@ -233,7 +257,11 @@ class App extends React.Component {
       } else {
         this.setState((oldState, props) => {
           let newUsers = oldState.users.slice();
-          newUsers.push([update.client_id,update.username]);
+          newUsers.push({
+            id: update.client_id,
+            name: update.username,
+            last_touched: null
+          });
           return { users: newUsers };
         });
       }
@@ -241,7 +269,7 @@ class App extends React.Component {
       this.setState((oldState, props) => {
         let newUsers = [];
         for (let i = 0; i < oldState.users.length; ++i) {
-          if (oldState.users[i][0] !== update.client_id) {
+          if (oldState.users[i].id !== update.client_id) {
             newUsers.push(oldState.users[i]);
           }
         }
@@ -277,11 +305,21 @@ class App extends React.Component {
           newSamplerSeq.push(row);
         }
       }
+
+      let newUsers = [];
+      for (let i = 0; i < newState.connected_clients.length; ++i) {
+        newUsers.push({
+          id: newState.connected_clients[i][0],
+          name: newState.connected_clients[i][1],
+          last_touched: null
+        });
+      }
+
       this.setState({
         synthSeqTables: newSynthSeqs,
         synthCutoffs: newState.synth_cutoffs,
         samplerTable: newSamplerSeq,
-        users: newState.connected_clients
+        users: newUsers
       })
     }
     if (update.client_id !== this.client_id) {
@@ -290,8 +328,20 @@ class App extends React.Component {
         this.setState((oldState,props) => {
           let newSynthSeqs = oldState.synthSeqTables.slice();
           newSynthSeqs[update.synth_ix][update.cell_ix][update.beat_ix] = update.on ? 1 : 0;
+          let newUsers = oldState.users.slice();
+          for (let i = 0; i < newUsers.length; ++i) {
+            if (newUsers[i].id === update.client_id) {
+              newUsers[i].last_touched = {
+                type: "synth",
+                synthIx: update.synth_ix,
+                row: update.cell_ix,
+                col: update.beat_ix
+              };
+            }
+          }
           return {
-            synthSeqTabls: newSynthSeqs
+            synthSeqTabls: newSynthSeqs,
+            users: newUsers
           };
         });
       } else if (update.update_type == "sampler_seq") {
@@ -494,14 +544,29 @@ class App extends React.Component {
 
   render() {
     let synthIxs = [];
+    let userHighlights = [];
     for (let i = 0; i < this.state.synthSeqTables.length; ++i) {
       synthIxs.push(i);
+      userHighlights.push([]);
+    }
+    for (let i = 0; i < this.state.users.length; ++i) {
+      let lastTouched = this.state.users[i].last_touched;
+      if (lastTouched !== null) {
+        let touchType = lastTouched.type;
+        if (touchType === "synth") {
+          userHighlights[lastTouched.synthIx].push({
+            id: this.state.users[i].id,
+            row: lastTouched.row,
+            col: lastTouched.col
+          });
+        }
+      }
     }
     return (
       <div>
         <UserList users={this.state.users} />
         <button onClick={this.handlePlayButtonClick}>Play/Stop</button>
-        { synthIxs.map((s) =>
+        { synthIxs.map((s) => 
             <div key={s.toString()}>
               <SynthComponent
                 sequencerMatrix={this.state.synthSeqTables[s]}
@@ -510,13 +575,16 @@ class App extends React.Component {
                 onClick={(r,c) => this.handleSynthSeqClick(s,r,c)}
                 onCutoffLocalUpdate={(cutoff) => this.handleCutoffLocalUpdate(s,cutoff)}
                 onCutoffGlobalUpdate={(cutoff) => this.handleCutoffGlobalUpdate(s,cutoff)}  
+                userHighlights={userHighlights[s]}
               /> 
               <br />
             </div>)}
         <SequencerTable
           setting={this.state.samplerTable}
           beatIx={this.state.beatIndex}
-          onClick={this.handleSamplerClick} />
+          onClick={this.handleSamplerClick} 
+          userHighlights={[]}
+        />
       </div>
     );
   }
