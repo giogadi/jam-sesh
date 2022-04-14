@@ -262,9 +262,7 @@ class App extends React.Component {
     let update = JSON.parse(event.data);
     console.log("Received message " + JSON.stringify(update));
     if (update.update_type == "new_client") {
-      if (this.clientId === null) {
-        this.clientId = update.client_id;
-      } else {
+      if (this.clientId !== update.client_id) {
         this.setState((oldState, props) => {
           let newUsers = oldState.users.slice();
           newUsers.push({
@@ -323,6 +321,11 @@ class App extends React.Component {
           name: newState.connected_clients[i][1],
           lastTouched: null
         });
+      }
+
+      if (this.clientId === null) {
+        // Assume last item in connected_clients is me. Get client ID from there.
+        this.clientId = newState.connected_clients[newState.connected_clients.length-1][0];
       }
 
       this.setState({

@@ -9,7 +9,6 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use websocket::sync::Server;
-use websocket::ws::Receiver;
 use websocket::OwnedMessage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,7 +101,8 @@ fn parse_msg_from_client(msg: &str) -> Option<ParsedUpdate> {
     return Option::None;
 }
 
-fn update_main_state_from_client(update: &ParsedAndOrigUpdateFromClient, state: &mut State, connections: &mut Vec<ClientInfo>) {
+fn update_main_state_from_client(
+    update: &ParsedAndOrigUpdateFromClient, state: &mut State, connections: &mut Vec<ClientInfo>) {
     match &update.parsed_update {
         ParsedUpdate::Connect {username} => {
             state.connected_clients.push((update.client_id.0 as i32,username.clone()));
@@ -112,8 +112,12 @@ fn update_main_state_from_client(update: &ParsedAndOrigUpdateFromClient, state: 
 
             // Remove from list of connections sent to clients
             let client_ix =
-                state.connected_clients.iter().position(|&(id,_)| id == (update.client_id.0 as i32)).unwrap();
-            state.connected_clients.swap_remove(client_ix);
+                state.connected_clients.iter().position(|&(id,_)| id == (update.client_id.0 as i32));
+            if client_ix.is_some() {
+                state.connected_clients.swap_remove(client_ix.unwrap());
+            } else {
+                println!("Client {} disconnected before sending a username.", update.client_id.0);
+            }
 
             // Remove from main's master list of connections
             let disconnecting_ix =
@@ -136,15 +140,74 @@ fn update_main_state_from_client(update: &ParsedAndOrigUpdateFromClient, state: 
     }
 }
 
-#[derive(Debug, Clone)]
-enum UpdateFromMain {
-    FullStateSync(State),
-    DiffUpdate(ParsedAndOrigUpdateFromClient)
+fn listen_for_client_updates(
+    to_main: mpsc::Sender<ParsedAndOrigUpdateFromClient>,
+    mut from_client: websocket::receiver::Reader<std::net::TcpStream>,
+    client_id: ClientId) {
+    loop {
+        let result = from_client.recv_message();
+        match result {
+            Ok(OwnedMessage::Text(s)) => {
+                println!("Received: {} {}", client_id.0, &s);
+                let parsed_update = parse_msg_from_client(&s).unwrap();
+                let orig_msg: String;
+                if let ParsedUpdate::Connect {username} = &parsed_update {
+                    // Construct the connect message we'll use (with client ID attached)
+                    let pre_json_msg = NewConnectionPreJson {
+                        update_type: "new_client",
+                        client_id: client_id.0 as i32,
+                        username: username.clone()
+                    };
+                    orig_msg = serde_json::to_string(&pre_json_msg).unwrap();
+                } else {
+                    orig_msg = s;
+                }
+                to_main.send(ParsedAndOrigUpdateFromClient {
+                    parsed_update: parsed_update,
+                    original_msg: orig_msg,
+                    client_id: client_id
+                }).unwrap();
+            }
+            Ok(OwnedMessage::Close(maybe_close_data)) => {
+                let disconnect_string = match maybe_close_data {
+                    Some(close_data) => close_data.reason,
+                    None => "".to_string(),
+                };
+                println!(
+                    "Client {} disconnected: {}",
+                    client_id.0, disconnect_string
+                );
+                let pre_json = DisconnectPreJson {
+                    update_type: "disconnect",
+                    client_id: client_id.0 as i32
+                };
+                let update = ParsedAndOrigUpdateFromClient {
+                    parsed_update: ParsedUpdate::Disconnect,
+                    original_msg: serde_json::to_string(&pre_json).unwrap(),
+                    client_id: client_id
+                };
+                to_main.send(update).unwrap();
+                return;
+            }
+            Ok(_) => {
+                println!("Client listener: unexpected message");
+            }
+            // TODO: handle each of these cases with more granularity. For
+            // example, should distinguish "no data received" from
+            // "received data that didn't fit in any of the above
+            // categories".
+            Err(e) => {
+                println!("Client listener error: {}", e);
+            }
+        }
+    }
 }
 
 struct ClientInfo {
     id: ClientId,
-    to_client_thread: mpsc::Sender<UpdateFromMain>,
+    to_client: websocket::sender::Writer<std::net::TcpStream>,
+    received_username: bool,
+    sent_state_sync: bool
 }
 
 #[derive(Serialize)]
@@ -164,135 +227,6 @@ struct NewConnectionPreJson {
 struct DisconnectPreJson {
     update_type: &'static str,
     client_id: i32
-}
-
-fn maybe_relay_update_from_main_to_client(
-    from_main: &mpsc::Receiver<UpdateFromMain>,
-    to_client: &mut websocket::sender::Writer<std::net::TcpStream>,
-    has_received_id: &mut bool,
-    has_received_sync: &mut bool) {
-    let result = from_main.try_recv();
-    match result {
-        Ok(UpdateFromMain::FullStateSync(state)) => {
-            assert!(*has_received_id && !*has_received_sync, "{} {}", *has_received_id, *has_received_sync);
-            *has_received_sync = true;
-            let pre_json_msg = FullStateSyncPreJson {
-                update_type: "sync",
-                state: state
-            };
-            let json_msg = serde_json::to_string(&pre_json_msg).unwrap();
-            println!("Sent {}", json_msg);
-            to_client.send_message(&OwnedMessage::Text(json_msg)).unwrap();
-        }
-        Ok(UpdateFromMain::DiffUpdate(update)) => {
-            if !*has_received_id {
-                if let ParsedUpdate::Connect{..} = update.parsed_update {
-                    *has_received_id = true;
-                } else {
-                    println!("client received diff before full sync. ignoring.");
-                    return;
-                }
-            }
-            println!("Sent {}", update.original_msg);
-            to_client.send_message(&OwnedMessage::Text(update.original_msg)).unwrap();
-        }
-        Err(std::sync::mpsc::TryRecvError::Empty) => (),
-        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-            println!("{:?}", &result);
-        }
-    }
-}
-
-// Returns true if client disconnected
-fn maybe_relay_update_from_client_to_main(
-    to_main: &mpsc::Sender<ParsedAndOrigUpdateFromClient>,
-    from_client: &mut websocket::receiver::Reader<std::net::TcpStream>,
-    from_client_id: ClientId, have_received_sync: bool)
-    -> bool {
-    let result = from_client
-        .receiver
-        .recv_message(&mut from_client.stream);
-    match result {
-        Ok(OwnedMessage::Text(s)) => {
-            println!("Received: {} {}", from_client_id.0, &s);
-            let parsed_update = parse_msg_from_client(&s).unwrap();
-            let orig_msg: String;
-            if !have_received_sync {
-                if let ParsedUpdate::Connect {username} = &parsed_update {
-                    // Construct the connect message we'll use. 
-                    let pre_json_msg = NewConnectionPreJson {
-                        update_type: "new_client",
-                        client_id: from_client_id.0 as i32,
-                        username: username.clone()
-                    };
-                    orig_msg = serde_json::to_string(&pre_json_msg).unwrap();
-                } else {
-                    panic!("first message from client wasn't connect: {}", s);
-                }            
-            } else {
-                orig_msg = s;
-            }
-            to_main.send(ParsedAndOrigUpdateFromClient {
-                parsed_update: parsed_update,
-                original_msg: orig_msg,
-                client_id: from_client_id
-            }).unwrap();
-            return false;
-        }
-        Ok(OwnedMessage::Close(maybe_close_data)) => {
-            let disconnect_string = match maybe_close_data {
-                Some(close_data) => close_data.reason,
-                None => "".to_string(),
-            };
-            // TODO separate logging
-            // TODO output ip addr too
-            println!(
-                "Client {} disconnected: {}",
-                from_client_id.0, disconnect_string
-            );
-            let pre_json = DisconnectPreJson {
-                update_type: "disconnect",
-                client_id: from_client_id.0 as i32
-            };
-            let update = ParsedAndOrigUpdateFromClient {
-                parsed_update: ParsedUpdate::Disconnect,
-                original_msg: serde_json::to_string(&pre_json).unwrap(),
-                client_id: from_client_id
-            };
-            to_main.send(update).unwrap();
-            return true;
-        }
-        // TODO: handle each of these cases with more granularity. For
-        // example, should distinguish "no data received" from
-        // "received data that didn't fit in any of the above
-        // categories".
-        _ => {
-            return false;
-        }
-    }
-}
-
-fn serve_client(
-    to_main: mpsc::Sender<ParsedAndOrigUpdateFromClient>,
-    from_main: mpsc::Receiver<UpdateFromMain>,
-    client: websocket::sync::Client<std::net::TcpStream>,
-    id: ClientId) {
-    client
-        .stream_ref()
-        .set_read_timeout(Some(std::time::Duration::new(0, 1)))
-        .ok();
-    let (mut from_client, mut to_client) = client.split().unwrap();
-    let mut have_received_id = false;
-    let mut have_received_sync = false;
-    loop {
-        let disconnected = maybe_relay_update_from_client_to_main(
-            &to_main, &mut from_client, id, have_received_sync);
-        if disconnected {
-            break;
-        }
-        maybe_relay_update_from_main_to_client(
-            &from_main, &mut to_client, &mut have_received_id, &mut have_received_sync);
-    }
 }
 
 fn main() {
@@ -321,17 +255,24 @@ fn main() {
             // TODO separate connection logs from message transmission
             // logs
             println!("Connection from {}", ip);
+            client
+                .stream_ref()
+                .set_read_timeout(None)
+                .ok();
+            let (from_client, to_client) = client.split().unwrap();
             let mut connections = thread_connections.lock().unwrap();
-            let (to_thread, from_main) = mpsc::channel();
+            // let (to_thread, from_main) = mpsc::channel();
             let id = ClientId(next_id);
             connections.push(ClientInfo {
                 id: id,
-                to_client_thread: to_thread,
+                to_client: to_client,
+                received_username: false,
+                sent_state_sync: false
             });
 
             let to_main_clone = to_main.clone();
             thread::spawn(move || {
-                serve_client(to_main_clone, from_main, client, id);
+                listen_for_client_updates(to_main_clone, from_client, id);
             });
 
             next_id += 1;
@@ -341,24 +282,50 @@ fn main() {
     for msg_from_client in from_threads.iter() {
         let mut connections = connections.lock().unwrap();
         let mut server_state = state.lock().unwrap();
-        update_main_state_from_client(&msg_from_client, &mut server_state, &mut connections);
 
-        // Now send the update to all the clients
-        // TODO: use enumerate instead of this ugly thing
-        let mut from_client_ix = 0;
-        for client_info in connections.iter() {
-            if client_info.id != msg_from_client.client_id {
-                from_client_ix += 1;
+        // If this message came from a client that has not received a state sync
+        // update yet, we only accept connect/disconnect updates.
+        let source_client = connections.iter_mut().find(
+            |c| c.id == msg_from_client.client_id).unwrap();
+        if !source_client.sent_state_sync {
+            let accept_msg = match msg_from_client.parsed_update {
+                ParsedUpdate::Connect {..} => true,
+                ParsedUpdate::Disconnect => true,
+                _ => false
+            };
+            if !accept_msg {
+                continue;
             }
-            client_info.to_client_thread.send(
-                UpdateFromMain::DiffUpdate(msg_from_client.clone()))
-                .unwrap();               
         }
 
+        update_main_state_from_client(&msg_from_client, &mut server_state, &mut connections);
+
         // If it was a connect message, send the state sync update directly to that client.
+        // The client can assume that _they_ are the last item in connected_clients.
         if let ParsedUpdate::Connect {..} = msg_from_client.parsed_update {
-            let msg_to_client = UpdateFromMain::FullStateSync(server_state.clone());
-            connections[from_client_ix].to_client_thread.send(msg_to_client).unwrap();
+            let new_client = connections.iter_mut().find(
+                |c| c.id == msg_from_client.client_id).unwrap();
+            new_client.received_username = true;
+            let pre_json_msg = FullStateSyncPreJson {
+                update_type: "sync",
+                state: server_state.clone()
+            };
+            let json_msg = serde_json::to_string(&pre_json_msg).unwrap();
+            println!("Sending {}", json_msg);
+            new_client.to_client.send_message(&OwnedMessage::Text(json_msg)).unwrap();
+            new_client.sent_state_sync = true;
+        }
+
+        // Now send the update to all the clients.
+        for client_info in connections.iter_mut() {
+            if !client_info.sent_state_sync {
+                // If this client has not yet received its state sync, we do not
+                // send them any other messages.
+                continue;
+            }    
+            // TODO: do I have to copy this string?
+            client_info.to_client.send_message(
+                &OwnedMessage::Text(msg_from_client.original_msg.clone())).unwrap();          
         }
     }
 }
