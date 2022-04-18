@@ -1,7 +1,6 @@
 * Add conflict resolution to server (and client too?)
   * Need a way to unit test the server!!!
 * Have state update send a sparse matrix for the sequences
-* Compile JSX to JS and stop including BABEL
 * Customize synth sound
   + envelopes
 * replace websocket library with something newer

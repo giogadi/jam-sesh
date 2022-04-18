@@ -221,8 +221,10 @@ class App extends React.Component {
     this.handleCutoffGlobalUpdate = this.handleCutoffGlobalUpdate.bind(this);
 
     this.playIntervalId = null;
-
+    
     this.clientId = null;
+
+    this.unacknowledgedUpdates = [];
   }
 
   async componentDidMount() {
@@ -242,9 +244,10 @@ class App extends React.Component {
       this.socket = await openSocket();
       // Send username over socket
       let msg = {
-        update_type: "new_client",
-        username: this.username
-      }
+        Connect: {
+          username: this.username
+        }
+      };
       const jsonStr = JSON.stringify(msg);
       this.socket.send(jsonStr);
       console.log("Sent " + jsonStr);
@@ -259,45 +262,32 @@ class App extends React.Component {
   }
 
   updateStateFromSocketEvent(event) {
-    let update = JSON.parse(event.data);
-    console.log("Received message " + JSON.stringify(update));
-    if (update.update_type == "new_client") {
-      if (this.clientId !== update.client_id) {
-        this.setState((oldState, props) => {
-          let newUsers = oldState.users.slice();
-          newUsers.push({
-            id: update.client_id,
-            name: update.username,
-            lastTouched: null
-          });
-          return { users: newUsers };
-        });
-      }
-    } else if (update.update_type == "disconnect") {
-      this.setState((oldState, props) => {
-        let newUsers = [];
-        for (let i = 0; i < oldState.users.length; ++i) {
-          if (oldState.users[i].id !== update.client_id) {
-            newUsers.push(oldState.users[i]);
-          }
-        }
-        return { users: newUsers };
-      });
-    } else if (update.update_type == "sync") {
-      let newState = update.state;
+    let incomingMsg = JSON.parse(event.data);
+    console.log("Received message " + JSON.stringify(incomingMsg));
+
+    // STATE SYNC UPDATE
+    // TODO: THIS SURE IS A HACKY WAY TO DETECT A STATE SYNC UPDATE LOL
+    if (incomingMsg.hasOwnProperty("synth_sequences")) {
+      this.unacknowledgedUpdates = [];
+      let newState = incomingMsg;
       let newSynthSeqs = [];
       let numSynths = newState.synth_sequences.length;
+
       for (let s = 0; s < numSynths; ++s) {
         let synthSeq = [];
         let numRows = newState.synth_sequences[s].length;
         let numCols = newState.synth_sequences[s][0].length;
+
         for (let r = 0; r < numRows; ++r) {
           let row = [];
+
           for (let c = 0; c < numCols; ++c) {
             row.push(newState.synth_sequences[s][r][c]);
           }
+
           synthSeq.push(row);
         }
+
         newSynthSeqs.push(synthSeq);
       }
 
@@ -305,16 +295,19 @@ class App extends React.Component {
       {
         let numRows = newState.sampler_sequence.length;
         let numCols = newState.sampler_sequence[0].length;
+
         for (let r = 0; r < numRows; ++r) {
           let row = [];
+
           for (let c = 0; c < numCols; ++c) {
             row.push(newState.sampler_sequence[r][c]);
           }
+
           newSamplerSeq.push(row);
         }
       }
-
       let newUsers = [];
+
       for (let i = 0; i < newState.connected_clients.length; ++i) {
         newUsers.push({
           id: newState.connected_clients[i][0],
@@ -325,7 +318,7 @@ class App extends React.Component {
 
       if (this.clientId === null) {
         // Assume last item in connected_clients is me. Get client ID from there.
-        this.clientId = newState.connected_clients[newState.connected_clients.length-1][0];
+        this.clientId = newState.connected_clients[newState.connected_clients.length - 1][0];
       }
 
       this.setState({
@@ -333,69 +326,163 @@ class App extends React.Component {
         synthCutoffs: newState.synth_cutoffs,
         samplerTable: newSamplerSeq,
         users: newUsers
-      })
+      });
+
+      return;
     }
-    if (update.client_id !== this.client_id) {
-      if (update.update_type == "synth_seq") {
-        // TODO: do validation of voices
-        this.setState((oldState,props) => {
-          let newSynthSeqs = oldState.synthSeqTables.slice();
-          newSynthSeqs[update.synth_ix][update.cell_ix][update.beat_ix] = update.on ? 1 : 0;
+
+    // OK NOT A STATE SYNC NOW
+
+    let sourceClientId = incomingMsg.client_id;
+    let generalUpdate = incomingMsg.update;
+
+    if (generalUpdate.hasOwnProperty("Connect")) {
+      if (this.clientId !== sourceClientId) {
+        this.setState((oldState, props) => {
           let newUsers = oldState.users.slice();
-          for (let i = 0; i < newUsers.length; ++i) {
-            if (newUsers[i].id === update.client_id) {
-              newUsers[i].lastTouched = {
-                type: "synth_seq",
-                synthIx: update.synth_ix,
-                row: update.cell_ix,
-                col: update.beat_ix
-              };
-            }
-          }
+          newUsers.push({
+            id: sourceClientId,
+            name: generalUpdate.Connect.username,
+            lastTouched: null
+          });
           return {
-            synthSeqTabls: newSynthSeqs,
-            users: newUsers
-          };
-        });
-      } else if (update.update_type == "sampler_seq") {
-        this.setState((oldState,props) => {
-          let newSeq = oldState.samplerTable.slice();
-          newSeq[update.cell_ix][update.beat_ix] = update.on ? 1 : 0;
-          let newUsers = oldState.users.slice();
-          for (let i = 0; i < newUsers.length; ++i) {
-            if (newUsers[i].id === update.client_id) {
-              newUsers[i].lastTouched = {
-                type: "sampler_seq",
-                row: update.cell_ix,
-                col: update.beat_ix
-              };
-            }
-          }
-          return {
-            samplerTable: newSeq,
-            users: newUsers
-          };
-        })
-      } else if (update.update_type == "filter_cutoff") {
-        this.setState((oldState,props) => {
-          let newCutoffs = oldState.synthCutoffs.slice();
-          newCutoffs[update.synth_ix] = update.value;
-          let newUsers = oldState.users.slice();
-          for (let i = 0; i < newUsers.length; ++i) {
-            if (newUsers[i].id === update.client_id) {
-              newUsers[i].lastTouched = {
-                type: "synth_cutoff",
-                synthIx: update.synth_ix,
-                value: update.value
-              };
-            }
-          }
-          return {
-            synthCutoffs: newCutoffs,
             users: newUsers
           };
         });
       }
+    } else if (generalUpdate.hasOwnProperty("Disconnect")) {
+      this.setState((oldState, props) => {
+        let newUsers = [];
+
+        for (let i = 0; i < oldState.users.length; ++i) {
+          if (oldState.users[i].id !== sourceClientId) {
+            newUsers.push(oldState.users[i]);
+          }
+        }
+
+        return {
+          users: newUsers
+        };
+      });
+    }
+
+    if (sourceClientId === this.clientId) {
+      for (let unackIx = 0; unackIx < this.unacknowledgedUpdates.length; ++unackIx) {
+        let unack = this.unacknowledgedUpdates[unackIx];
+        // if (unack.update_type === update.update_type) {
+        //   if (update.update_type === "synth_seq") {
+        //     if (update.synth_ix === unack.synth_ix) {
+        //       // TODO: change state msg to server to be the whole beat's contents.
+        //     }
+        //   } else if (update.update_type === "sampler_seq") {
+
+        //   } else if (update.update_type === "filter_cutoff") {
+        //     if (update.synth_ix === unack.synth_ix) {
+              
+        //     }
+        //   }
+        // }
+
+        // TODO: can element ordering cause this to mess up since server
+        // re-serializes client message?
+        if (unack === generalUpdate) {
+          this.unacknowledgeUpdates.splice(unackIx, 1);
+          break;
+        }
+      }
+
+      return;
+    }
+
+    // TODO: change seq update to be all the active voices in the changed column, then check below
+    // whether incoming updates match an unacknowledged one.
+
+    // If we find an unacknowledged update that is in conflict with the incoming
+    // update, ignore the incoming one.
+    // for (let unackIx = 0; unackIx < this.unacknowledgedUpdates.length; ++unackIx) {
+    //   let unack = this.unacknowledgedUpdates[unackIx];
+    //   if (update.update_type === "synth_seq") {
+    //     // TODO
+    //   } else if (update.update_type === "sampler_seq") {
+    //     // TODO
+    //   } else if (update.update_type === "filter_cutoff") {
+    //     if (update.synth_ix === unack.synth_ix) {
+    //       console.log(`Ignoring update: ${update}`);
+    //     }
+    //   } else {
+    //     console.log("BAD UPDATE TYPE: " + update.update_type);
+    //   }
+    // }
+
+
+    if (generalUpdate.hasOwnProperty("SynthSeq")) {
+      // TODO: do validation of voices
+      let update = generalUpdate.SynthSeq;
+      this.setState((oldState, props) => {
+        let newSynthSeqs = oldState.synthSeqTables.slice();
+        newSynthSeqs[update.synth_ix][update.cell_ix][update.beat_ix] = update.on ? 1 : 0;
+        let newUsers = oldState.users.slice();
+
+        for (let i = 0; i < newUsers.length; ++i) {
+          if (newUsers[i].id === sourceClientId) {
+            newUsers[i].lastTouched = {
+              type: "synth_seq",
+              synthIx: update.synth_ix,
+              row: update.cell_ix,
+              col: update.beat_ix
+            };
+          }
+        }
+
+        return {
+          synthSeqTabls: newSynthSeqs,
+          users: newUsers
+        };
+      });
+    } else if (generalUpdate.hasOwnProperty("SamplerSeq")) {
+      let update = generalUpdate.SamplerSeq;
+      this.setState((oldState, props) => {
+        let newSeq = oldState.samplerTable.slice();
+        newSeq[update.cell_ix][update.beat_ix] = update.on ? 1 : 0;
+        let newUsers = oldState.users.slice();
+
+        for (let i = 0; i < newUsers.length; ++i) {
+          if (newUsers[i].id === sourceClientId) {
+            newUsers[i].lastTouched = {
+              type: "sampler_seq",
+              row: update.cell_ix,
+              col: update.beat_ix
+            };
+          }
+        }
+
+        return {
+          samplerTable: newSeq,
+          users: newUsers
+        };
+      });
+    } else if (generalUpdate.hasOwnProperty("SynthFilterCutoff")) {
+      let update = generalUpdate.SynthFilterCutoff;
+      this.setState((oldState, props) => {
+        let newCutoffs = oldState.synthCutoffs.slice();
+        newCutoffs[update.synth_ix] = update.value;
+        let newUsers = oldState.users.slice();
+
+        for (let i = 0; i < newUsers.length; ++i) {
+          if (newUsers[i].id === sourceClientId) {
+            newUsers[i].lastTouched = {
+              type: "synth_cutoff",
+              synthIx: update.synth_ix,
+              value: update.value
+            };
+          }
+        }
+
+        return {
+          synthCutoffs: newCutoffs,
+          users: newUsers
+        };
+      });
     }
   }
 
@@ -480,11 +567,12 @@ class App extends React.Component {
     // that the local update will have already run?
     if (this.socket !== null) {
       let msg = {
-        client_id: this.clientId,
-        update_type: "filter_cutoff",
-        synth_ix: synthIx,
-        value: parseFloat(newCutoffParamStr)
-      }
+        SynthFilterCutoff: {
+          synth_ix: synthIx,
+          value: parseFloat(newCutoffParamStr)
+        }
+      };
+      this.unacknowledgedUpdates.push(msg);
       const jsonStr = JSON.stringify(msg);
       this.socket.send(jsonStr);
       console.log("Sent " + jsonStr);
@@ -540,13 +628,14 @@ class App extends React.Component {
 
     if (this.socket !== null) {
       const msg = {
-        client_id: this.clientId,
-        update_type: "synth_seq",
-        synth_ix: synthIx,
-        beat_ix: col,
-        cell_ix: row,
-        on: (newTables[synthIx][row][col] === 1)
-      }
+        SynthSeq: {
+          synth_ix: synthIx,
+          beat_ix: col,
+          cell_ix: row,
+          on: newTables[synthIx][row][col] === 1
+        }
+      };
+      this.unacknowledgedUpdates.push(msg);
       const jsonMsg = JSON.stringify(msg);
       this.socket.send(jsonMsg);
       console.log("Sent " + jsonMsg);
@@ -565,12 +654,13 @@ class App extends React.Component {
 
     if (this.socket !== null) {
       const msg = {
-        client_id: this.clientId,
-        update_type: "sampler_seq",
-        beat_ix: col,
-        cell_ix: row,
-        on: (newTable[row][col] === 1)
-      }
+        SamplerSeq: {
+          beat_ix: col,
+          cell_ix: row,
+          on: newTable[row][col] === 1
+        }
+      };
+      this.unacknowledgedUpdates.push(msg);
       const jsonMsg = JSON.stringify(msg);
       this.socket.send(jsonMsg);
       console.log("Sent " + jsonMsg);
