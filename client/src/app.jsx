@@ -265,8 +265,7 @@ class App extends React.Component {
 
   updateStateFromSocketEvent(event) {
     let incomingMsg = JSON.parse(event.data);
-    // console.log("Received message " + JSON.stringify(incomingMsg));
-    console.log("Received message " + JSON.stringify(incomingMsg));
+    console.log("Received message " + event.data);
 
     // STATE SYNC UPDATE
     // TODO: THIS SURE IS A HACKY WAY TO DETECT A STATE SYNC UPDATE LOL
@@ -275,8 +274,6 @@ class App extends React.Component {
       let newState = incomingMsg;
       let newSynthSeqs = [];
       let numSynths = newState.synth_sequences.length;
-
-      console.log("synth_sequences: " + newState.synth_sequences[0][13] + " " + newState.synth_sequences[0][13]);
       
       for (let s = 0; s < numSynths; ++s) {
         let incomingStateSeq = newState.synth_sequences[s];
@@ -294,7 +291,6 @@ class App extends React.Component {
         for (let c = 0; c < numCols; ++c) {
           for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
             let v = incomingStateSeq[c][voiceIx];
-            // console.log(`c = ${c}, i = ${voiceIx}, v = ${v}`);
             if (v >= 0) {
               synthSeq[v][c] = 1;
             }            
@@ -320,7 +316,7 @@ class App extends React.Component {
           for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
             let v = incomingStateSeq[c][voiceIx];
             if (v >= 0) {
-              newSamplerSeq[v] = 1;
+              newSamplerSeq[v][c] = 1;
             }            
           }
         }
@@ -339,8 +335,6 @@ class App extends React.Component {
         // Assume last item in connected_clients is me. Get client ID from there.
         this.clientId = newState.connected_clients[newState.connected_clients.length - 1][0];
       }
-
-      console.log("sync:newSynthSeqs " + newSynthSeqs[0][13] + " " + " " + newSynthSeqs[0][0])
 
       this.setState({
         synthSeqTables: newSynthSeqs,
@@ -462,8 +456,7 @@ class App extends React.Component {
             newUsers[i].lastTouched = {
               type: "synth_seq",
               synthIx: update.synth_ix,
-              //row: update.cell_ix,
-              row: 0,
+              row: update.clicked_cell_ix,
               col: update.beat_ix
             };
           }
@@ -481,7 +474,7 @@ class App extends React.Component {
 
         let numRows = newSeqTable.length;
         for (let r = 0; r < numRows; ++r) {
-          newSeqTable[update.beat_ix] = 0;
+          newSeqTable[r][update.beat_ix] = 0;
         }
         let numVoices = update.active_cell_ixs.length;
         for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
@@ -496,15 +489,14 @@ class App extends React.Component {
           if (newUsers[i].id === sourceClientId) {
             newUsers[i].lastTouched = {
               type: "sampler_seq",
-              // row: update.cell_ix,
-              row: 0,
+              row: update.clicked_cell_ix,
               col: update.beat_ix
             };
           }
         }
 
         return {
-          samplerTable: newSeq,
+          samplerTable: newSeqTable,
           users: newUsers
         };
       });
@@ -690,12 +682,13 @@ class App extends React.Component {
           ++voiceIx;
         }
       }
-      console.log("activeCellIxs: " + activeCellIxs);
+
       const msg = {
         SynthSeq: {
           synth_ix: synthIx,
           beat_ix: col,
-          active_cell_ixs: activeCellIxs
+          active_cell_ixs: activeCellIxs,
+          clicked_cell_ix: row
         }
       };
       const jsonMsg = JSON.stringify(msg);
@@ -735,7 +728,8 @@ class App extends React.Component {
       const msg = {
         SamplerSeq: {
           beat_ix: col,
-          active_cell_ixs: activeCellIxs
+          active_cell_ixs: activeCellIxs,
+          clicked_cell_ix: row
         }
       };
       const jsonMsg = JSON.stringify(msg);
@@ -757,7 +751,7 @@ class App extends React.Component {
       synthSeqHighlights.push([]);
       synthCutoffHighlights.push(null);
     }
-    console.log("render:synthIxs " + synthIxs);
+
     let samplerSeqHighlights = [];
     for (let i = 0; i < this.state.users.length; ++i) {
       let lastTouched = this.state.users[i].lastTouched;

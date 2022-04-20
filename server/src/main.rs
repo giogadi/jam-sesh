@@ -59,11 +59,13 @@ enum StateUpdate {
     SynthSeq {
         synth_ix: i32,
         beat_ix: i32,
-        active_cell_ixs: Vec<i32>
+        active_cell_ixs: Vec<i32>,
+        clicked_cell_ix: i32
     },
     SamplerSeq {
         beat_ix: i32,
-        active_cell_ixs: Vec<i32>
+        active_cell_ixs: Vec<i32>,
+        clicked_cell_ix: i32
     },
     SynthFilterCutoff {
         synth_ix: i32,
@@ -103,14 +105,14 @@ fn update_main_state_from_client(
             assert!(disconnecting_ix.is_some());
             connections.swap_remove(disconnecting_ix.unwrap());
         }
-        StateUpdate::SynthSeq { synth_ix, beat_ix, active_cell_ixs } => {
+        StateUpdate::SynthSeq { synth_ix, beat_ix, active_cell_ixs, .. } => {
             let voices = &mut state.synth_sequences[*synth_ix as usize][*beat_ix as usize];
             assert!(voices.len() == active_cell_ixs.len(), "voices={:?}, active_cell_ixs={:?}", voices, active_cell_ixs);
             for (i,v) in active_cell_ixs.iter().enumerate() {
                 voices[i] = *v;
             }
         }
-        StateUpdate::SamplerSeq { beat_ix, active_cell_ixs } => {
+        StateUpdate::SamplerSeq { beat_ix, active_cell_ixs, .. } => {
             let voices = &mut state.sampler_sequence[*beat_ix as usize];
             assert!(voices.len() == active_cell_ixs.len());
             for (i,v) in active_cell_ixs.iter().enumerate() {
