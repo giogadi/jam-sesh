@@ -184,7 +184,7 @@ class App extends React.Component {
     const DEFAULT_NUM_SYNTHS = 2;
     for (let synthIx = 0; synthIx < DEFAULT_NUM_SYNTHS; ++synthIx) {
       let seqTable = [];
-      const DEFAULT_NUM_SYNTH_ROWS = 12;
+      const DEFAULT_NUM_SYNTH_ROWS = 14;
       const DEFAULT_NUM_SYNTH_BEATS = 16;
       for (let i = 0; i < DEFAULT_NUM_SYNTH_ROWS; ++i) {
         let row = [];
@@ -207,6 +207,8 @@ class App extends React.Component {
       }
       this.state.samplerTable.push(row);
     }
+
+    this.numSamplerVoices = 2;
 
     this.getNumVoices = this.getNumVoices.bind(this);
 
@@ -263,6 +265,7 @@ class App extends React.Component {
 
   updateStateFromSocketEvent(event) {
     let incomingMsg = JSON.parse(event.data);
+    // console.log("Received message " + JSON.stringify(incomingMsg));
     console.log("Received message " + JSON.stringify(incomingMsg));
 
     // STATE SYNC UPDATE
@@ -273,41 +276,57 @@ class App extends React.Component {
       let newSynthSeqs = [];
       let numSynths = newState.synth_sequences.length;
 
+      console.log("synth_sequences: " + newState.synth_sequences[0][13] + " " + newState.synth_sequences[0][13]);
+      
       for (let s = 0; s < numSynths; ++s) {
+        let incomingStateSeq = newState.synth_sequences[s];
         let synthSeq = [];
-        let numRows = newState.synth_sequences[s].length;
-        let numCols = newState.synth_sequences[s][0].length;
-
+        let numRows = newState.num_synth_note_rows;
+        let numCols = incomingStateSeq.length;
+        let numVoices = incomingStateSeq[0].length;
         for (let r = 0; r < numRows; ++r) {
           let row = [];
-
           for (let c = 0; c < numCols; ++c) {
-            row.push(newState.synth_sequences[s][r][c]);
+            row.push(0);
           }
-
           synthSeq.push(row);
         }
-
+        for (let c = 0; c < numCols; ++c) {
+          for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
+            let v = incomingStateSeq[c][voiceIx];
+            // console.log(`c = ${c}, i = ${voiceIx}, v = ${v}`);
+            if (v >= 0) {
+              synthSeq[v][c] = 1;
+            }            
+          }
+        }
         newSynthSeqs.push(synthSeq);
       }
 
       let newSamplerSeq = [];
       {
-        let numRows = newState.sampler_sequence.length;
-        let numCols = newState.sampler_sequence[0].length;
-
+        let incomingStateSeq = newState.sampler_sequence;
+        let numRows = newState.num_sampler_note_rows;
+        let numCols = incomingStateSeq.length;
+        let numVoices = incomingStateSeq[0].length;
         for (let r = 0; r < numRows; ++r) {
           let row = [];
-
           for (let c = 0; c < numCols; ++c) {
-            row.push(newState.sampler_sequence[r][c]);
+            row.push(0);
           }
-
           newSamplerSeq.push(row);
         }
+        for (let c = 0; c < numCols; ++c) {
+          for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
+            let v = incomingStateSeq[c][voiceIx];
+            if (v >= 0) {
+              newSamplerSeq[v] = 1;
+            }            
+          }
+        }
       }
-      let newUsers = [];
 
+      let newUsers = [];
       for (let i = 0; i < newState.connected_clients.length; ++i) {
         newUsers.push({
           id: newState.connected_clients[i][0],
@@ -320,6 +339,8 @@ class App extends React.Component {
         // Assume last item in connected_clients is me. Get client ID from there.
         this.clientId = newState.connected_clients[newState.connected_clients.length - 1][0];
       }
+
+      console.log("sync:newSynthSeqs " + newSynthSeqs[0][13] + " " + " " + newSynthSeqs[0][0])
 
       this.setState({
         synthSeqTables: newSynthSeqs,
@@ -368,49 +389,48 @@ class App extends React.Component {
 
     if (sourceClientId === this.clientId) {
       for (let unackIx = 0; unackIx < this.unacknowledgedUpdates.length; ++unackIx) {
-        let unack = this.unacknowledgedUpdates[unackIx];
-        // if (unack.update_type === update.update_type) {
-        //   if (update.update_type === "synth_seq") {
-        //     if (update.synth_ix === unack.synth_ix) {
-        //       // TODO: change state msg to server to be the whole beat's contents.
-        //     }
-        //   } else if (update.update_type === "sampler_seq") {
-
-        //   } else if (update.update_type === "filter_cutoff") {
-        //     if (update.synth_ix === unack.synth_ix) {
-              
-        //     }
-        //   }
-        // }
-
         // TODO: can element ordering cause this to mess up since server
         // re-serializes client message?
-        if (unack === generalUpdate) {
+        let unack = this.unacknowledgedUpdates[unackIx];
+        if (unack.raw === event.data) {
           this.unacknowledgeUpdates.splice(unackIx, 1);
           break;
         }
       }
-
       return;
     }
-
-    // TODO: change seq update to be all the active voices in the changed column, then check below
-    // whether incoming updates match an unacknowledged one.
 
     // If we find an unacknowledged update that is in conflict with the incoming
     // update, ignore the incoming one.
     // for (let unackIx = 0; unackIx < this.unacknowledgedUpdates.length; ++unackIx) {
-    //   let unack = this.unacknowledgedUpdates[unackIx];
-    //   if (update.update_type === "synth_seq") {
-    //     // TODO
-    //   } else if (update.update_type === "sampler_seq") {
-    //     // TODO
-    //   } else if (update.update_type === "filter_cutoff") {
-    //     if (update.synth_ix === unack.synth_ix) {
-    //       console.log(`Ignoring update: ${update}`);
+    //   let generalUnack = this.unacknowledgedUpdates[unackIx].parsed;
+    //   if (generalUnack.hasOwnProperty("SynthSeq")) {
+    //     if (generalUpdate.hasOwnProperty("SynthSeq")) {
+    //       let unack = generalUnack.SynthSeq;
+    //       let update = generalUpdate.SynthSeq;
+    //       if (unack.synth_ix === update.synth_ix && unack.beat_ix === update.beat_ix) {
+    //         console.log(`Ignoring update: ${update}`);
+    //         return;
+    //       }
     //     }
-    //   } else {
-    //     console.log("BAD UPDATE TYPE: " + update.update_type);
+    //   } else if (generalUnack.hasOwnProperty("SamplerSeq")) {
+    //     if (generalUpdate.hasOwnProperty("SamplerSeq")) {
+    //       let unack = generalUnack.SamplerSeq;
+    //       let update = generalUpdate.SamplerSeq;
+    //       if (unack.beat_ix === update.beat_ix) {
+    //         console.log(`Ignoring update: ${update}`);
+    //         return;
+    //       }
+    //     }
+    //   } else if (generalUnack.hasOwnProperty("SynthFilterCutoff")) {
+    //     if (generalUpdate.hasOwnProperty("SynthFilterCutoff")) {
+    //       let unack = generalUnack.SynthFilterCutoff;
+    //       let update = generalUpdate.SynthFilterCutoff;
+    //       if (unack.synth_ix === update.beat_ix) {
+    //         console.log(`Ignoring update: ${update}`);
+    //         return;
+    //       }
+    //     }
     //   }
     // }
 
@@ -420,37 +440,64 @@ class App extends React.Component {
       let update = generalUpdate.SynthSeq;
       this.setState((oldState, props) => {
         let newSynthSeqs = oldState.synthSeqTables.slice();
-        newSynthSeqs[update.synth_ix][update.cell_ix][update.beat_ix] = update.on ? 1 : 0;
-        let newUsers = oldState.users.slice();
+        {
+          newSynthSeqs[update.synth_ix] = oldState.synthSeqTables[update.synth_ix].slice();
+          let newSynthSeqTable = newSynthSeqs[update.synth_ix];
+          let numRows = newSynthSeqTable.length;
+          for (let r = 0; r < numRows; ++r) {
+            newSynthSeqTable[r][update.beat_ix] = 0;
+          }
+          let numVoices = update.active_cell_ixs.length;
+          for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
+            let v = update.active_cell_ixs[voiceIx];
+            if (v >= 0) {
+              newSynthSeqTable[v][update.beat_ix] = 1;
+            }
+          }
+        }
 
+        let newUsers = oldState.users.slice();
         for (let i = 0; i < newUsers.length; ++i) {
           if (newUsers[i].id === sourceClientId) {
             newUsers[i].lastTouched = {
               type: "synth_seq",
               synthIx: update.synth_ix,
-              row: update.cell_ix,
+              //row: update.cell_ix,
+              row: 0,
               col: update.beat_ix
             };
           }
         }
 
         return {
-          synthSeqTabls: newSynthSeqs,
+          synthSeqTables: newSynthSeqs,
           users: newUsers
         };
       });
     } else if (generalUpdate.hasOwnProperty("SamplerSeq")) {
       let update = generalUpdate.SamplerSeq;
       this.setState((oldState, props) => {
-        let newSeq = oldState.samplerTable.slice();
-        newSeq[update.cell_ix][update.beat_ix] = update.on ? 1 : 0;
-        let newUsers = oldState.users.slice();
+        let newSeqTable = oldState.samplerTable.slice();
 
+        let numRows = newSeqTable.length;
+        for (let r = 0; r < numRows; ++r) {
+          newSeqTable[update.beat_ix] = 0;
+        }
+        let numVoices = update.active_cell_ixs.length;
+        for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
+          let v = update.active_cell_ixs[voiceIx];
+          if (v >= 0) {
+            newSeqTable[v][update.beat_ix] = 1;
+          }
+        }
+
+        let newUsers = oldState.users.slice();
         for (let i = 0; i < newUsers.length; ++i) {
           if (newUsers[i].id === sourceClientId) {
             newUsers[i].lastTouched = {
               type: "sampler_seq",
-              row: update.cell_ix,
+              // row: update.cell_ix,
+              row: 0,
               col: update.beat_ix
             };
           }
@@ -572,8 +619,11 @@ class App extends React.Component {
           value: parseFloat(newCutoffParamStr)
         }
       };
-      this.unacknowledgedUpdates.push(msg);
       const jsonStr = JSON.stringify(msg);
+      this.unacknowledgedUpdates.push({
+        raw: jsonStr,
+        parsed: msg
+      });
       this.socket.send(jsonStr);
       console.log("Sent " + jsonStr);
     }
@@ -617,7 +667,7 @@ class App extends React.Component {
   }
 
   handleSynthSeqClick(synthIx, row, col) {
-    let newTables = this.newSeqsFromClick(this.state.synthSeqTables, synthIx, row, col, this.getNumVoices(0));
+    let newTables = this.newSeqsFromClick(this.state.synthSeqTables, synthIx, row, col, this.getNumVoices(synthIx));
     if (newTables === null) {
       return;
     }
@@ -626,17 +676,33 @@ class App extends React.Component {
         synthSeqTables: newTables
     });
 
-    if (this.socket !== null) {
+    if (this.socket !== null) {  
+      let activeCellIxs = [];
+      let numVoices = this.getNumVoices(synthIx);
+      for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
+        activeCellIxs.push(-1);
+      }
+      let numRows = newTables[synthIx].length;
+      let voiceIx = 0;
+      for (let r = 0; r < numRows; ++r) {
+        if (newTables[synthIx][r][col] === 1) {
+          activeCellIxs[voiceIx] = r;
+          ++voiceIx;
+        }
+      }
+      console.log("activeCellIxs: " + activeCellIxs);
       const msg = {
         SynthSeq: {
           synth_ix: synthIx,
           beat_ix: col,
-          cell_ix: row,
-          on: newTables[synthIx][row][col] === 1
+          active_cell_ixs: activeCellIxs
         }
       };
-      this.unacknowledgedUpdates.push(msg);
       const jsonMsg = JSON.stringify(msg);
+      this.unacknowledgedUpdates.push({
+        raw: jsonMsg,
+        parsed: msg
+      });
       this.socket.send(jsonMsg);
       console.log("Sent " + jsonMsg);
     }
@@ -653,15 +719,30 @@ class App extends React.Component {
     });
 
     if (this.socket !== null) {
+      let activeCellIxs = [];
+      let numVoices = this.numSamplerVoices;
+      for (let voiceIx = 0; voiceIx < numVoices; ++voiceIx) {
+        activeCellIxs.push(-1);
+      }
+      let numRows = newTable.length;
+      let voiceIx = 0;
+      for (let r = 0; r < numRows; ++r) {
+        if (newTable[r][col] === 1) {
+          activeCellIxs[voiceIx] = r;
+          ++voiceIx;
+        }
+      }
       const msg = {
         SamplerSeq: {
           beat_ix: col,
-          cell_ix: row,
-          on: newTable[row][col] === 1
+          active_cell_ixs: activeCellIxs
         }
       };
-      this.unacknowledgedUpdates.push(msg);
       const jsonMsg = JSON.stringify(msg);
+      this.unacknowledgedUpdates.push({
+        raw: jsonMsg,
+        parsed: msg
+      });
       this.socket.send(jsonMsg);
       console.log("Sent " + jsonMsg);
     }
@@ -676,6 +757,7 @@ class App extends React.Component {
       synthSeqHighlights.push([]);
       synthCutoffHighlights.push(null);
     }
+    console.log("render:synthIxs " + synthIxs);
     let samplerSeqHighlights = [];
     for (let i = 0; i < this.state.users.length; ++i) {
       let lastTouched = this.state.users[i].lastTouched;

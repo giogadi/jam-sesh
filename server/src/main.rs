@@ -16,6 +16,8 @@ struct ClientId(i32);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct State {
+    num_synth_note_rows: i32,
+    num_sampler_note_rows: i32,
     synth_sequences: Vec<Vec<Vec<i32>>>,
     synth_cutoffs: Vec<f64>,
     sampler_sequence: Vec<Vec<i32>>,
@@ -25,17 +27,25 @@ impl State {
     fn new() -> State {
         const NUM_SYNTHS: usize = 2;
         const NUM_BEATS: usize = 16;
-        const NUM_ROWS: usize = 14;
+        const NUM_SYNTH_VOICES_0: usize = 2;
+        const NUM_SYNTH_VOICES_1: usize = 1;
+        const NUM_SAMPLER_VOICES: usize = 2;
+        const NUM_SYNTH_NOTE_ROWS: usize = 14;
+        const NUM_SAMPLER_NOTE_ROWS: usize = 2;
+        let synth_sequence0 = vec![vec![-1; NUM_SYNTH_VOICES_0]; NUM_BEATS];
+        let synth_sequence1 = vec![vec![-1; NUM_SYNTH_VOICES_1]; NUM_BEATS];
         let mut state = State {
-            synth_sequences: vec![vec![vec![0; NUM_BEATS]; NUM_ROWS]; NUM_SYNTHS],
+            num_synth_note_rows: NUM_SYNTH_NOTE_ROWS as i32,
+            num_sampler_note_rows: NUM_SAMPLER_NOTE_ROWS as i32,
+            synth_sequences: vec![synth_sequence0, synth_sequence1],
             synth_cutoffs: vec![0.5; NUM_SYNTHS],
-            sampler_sequence: vec![vec![0; NUM_BEATS]; 2],
+            sampler_sequence: vec![vec![-1; NUM_SAMPLER_VOICES]; NUM_BEATS],
             connected_clients: vec![]
         };
-        state.synth_sequences[0][NUM_ROWS-1][0] = 1;
-        state.synth_sequences[0][NUM_ROWS-1][4] = 1;
-        state.synth_sequences[0][NUM_ROWS-1][8] = 1;
-        state.synth_sequences[0][NUM_ROWS-1][12] = 1;
+        state.synth_sequences[0][0][0] = (NUM_SYNTH_NOTE_ROWS-1) as i32;
+        state.synth_sequences[0][4][0] = (NUM_SYNTH_NOTE_ROWS-1) as i32;
+        state.synth_sequences[0][8][0] = (NUM_SYNTH_NOTE_ROWS-1) as i32;
+        state.synth_sequences[0][12][0] = (NUM_SYNTH_NOTE_ROWS-1) as i32;
         state
     }
 }
@@ -49,13 +59,11 @@ enum StateUpdate {
     SynthSeq {
         synth_ix: i32,
         beat_ix: i32,
-        cell_ix: i32,
-        on: bool
+        active_cell_ixs: Vec<i32>
     },
     SamplerSeq {
         beat_ix: i32,
-        cell_ix: i32,
-        on: bool
+        active_cell_ixs: Vec<i32>
     },
     SynthFilterCutoff {
         synth_ix: i32,
@@ -95,12 +103,19 @@ fn update_main_state_from_client(
             assert!(disconnecting_ix.is_some());
             connections.swap_remove(disconnecting_ix.unwrap());
         }
-        StateUpdate::SynthSeq { synth_ix, beat_ix, cell_ix, on } => {
-            // TODO: do validation of voices.
-            state.synth_sequences[*synth_ix as usize][*cell_ix as usize][*beat_ix as usize] = if *on { 1 } else { 0 };
+        StateUpdate::SynthSeq { synth_ix, beat_ix, active_cell_ixs } => {
+            let voices = &mut state.synth_sequences[*synth_ix as usize][*beat_ix as usize];
+            assert!(voices.len() == active_cell_ixs.len(), "voices={:?}, active_cell_ixs={:?}", voices, active_cell_ixs);
+            for (i,v) in active_cell_ixs.iter().enumerate() {
+                voices[i] = *v;
+            }
         }
-        StateUpdate::SamplerSeq { beat_ix, cell_ix, on } => {
-            state.sampler_sequence[*cell_ix as usize][*beat_ix as usize] = if *on { 1 } else { 0 };
+        StateUpdate::SamplerSeq { beat_ix, active_cell_ixs } => {
+            let voices = &mut state.sampler_sequence[*beat_ix as usize];
+            assert!(voices.len() == active_cell_ixs.len());
+            for (i,v) in active_cell_ixs.iter().enumerate() {
+                voices[i] = *v;
+            }
         }
         StateUpdate::SynthFilterCutoff { synth_ix, value } => {
             state.synth_cutoffs[*synth_ix as usize] = *value;
