@@ -2,6 +2,7 @@
 name = "jam-sesh-server"
 version = "0.1.0"
 authors = ["Luis G. Torres <lgtorres42@gmail.com>"]
+edition = "2021"
 
 [dependencies]
 serde = "1.0.136"

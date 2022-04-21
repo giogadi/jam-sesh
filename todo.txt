@@ -1,6 +1,16 @@
 * Add conflict resolution to server (and client too?)
   * Need a way to unit test the server!!!
-* Have state update send a sparse matrix for the sequences
+* Get direct JSX debugging (maybe with react debugging browser plugin?)
+* cleanups:
+  * refactor synth seq and sampler seq to share more code
+  * naming of "seq" vs "table" in client
+  * replace state with automerge crdt
+  * typescript?
+  * Instead of blah[][][], break things down more.
+  * consider going to sparse sequences for react state
+  * have client get _all_ its important parameters from server so that they're ensured to have parameters in sync.
+  * break stuff into smaller files
+  * unit tests somehow?
 * Customize synth sound
   + envelopes
 * replace websocket library with something newer
