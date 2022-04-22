@@ -1,5 +1,7 @@
 'use strict';
 
+import * as sound from './sound.js'
+
 const CLIENT_COLORS = ['cyan', 'magenta', 'orange', 'lightblue', 'navy', 'purple', 'aquamarine', 'darkgreen'];
 
 class SequencerTable extends React.Component {
@@ -133,9 +135,9 @@ function noteFrequency(note_ix) {
   if (note_ix > MAX_NOTE_INDEX || note_ix < 0) {
       throw "invalid note index (" + note_ix + ")";
   }
-  const base_freq_ix = note_ix % BASE_FREQS.length;
-  const num_octaves_above = Math.floor(note_ix / BASE_FREQS.length);
-  return BASE_FREQS[base_freq_ix] * (1 << num_octaves_above);
+  const base_freq_ix = note_ix % sound.BASE_FREQS.length;
+  const num_octaves_above = Math.floor(note_ix / sound.BASE_FREQS.length);
+  return sound.BASE_FREQS[base_freq_ix] * (1 << num_octaves_above);
 }
 
 // 16 rows.
@@ -143,7 +145,7 @@ function noteFrequency(note_ix) {
 // ro 15: noteIx 0 + 2*12
 function fromCellToFreq(row, numRows) {
   let noteIx = (numRows - 1) - row;
-  return noteFrequency(noteIx + NUM_CHROMATIC_NOTES*2);
+  return noteFrequency(noteIx + sound.NUM_CHROMATIC_NOTES*2);
 }
 
 function fromCellToSampleIx(row, numRows) {
@@ -235,7 +237,7 @@ class App extends React.Component {
     //   this.sound = await initSound();
     // };
     // initSoundAsync();
-    this.sound = await initSound();
+    this.sound = await sound.initSound();
 
     // Set init sound props to match the ones in App state
     for (let i = 0; i < this.state.synthCutoffs.length && i < this.sound.synths.length; ++i) {
@@ -386,8 +388,12 @@ class App extends React.Component {
         // TODO: can element ordering cause this to mess up since server
         // re-serializes client message?
         let unack = this.unacknowledgedUpdates[unackIx];
-        if (unack.raw === event.data) {
-          this.unacknowledgeUpdates.splice(unackIx, 1);
+        let updateStr = JSON.stringify(incomingMsg.update);
+        // console.log("HOWDY " + unackIx + ". I sent: " + unack.raw);
+        // console.log("I received: " + updateStr);
+        if (unack.raw === updateStr) {
+          console.log("I see my unacknowledged message!");
+          this.unacknowledgedUpdates.splice(unackIx, 1);
           break;
         }
       }
@@ -396,38 +402,37 @@ class App extends React.Component {
 
     // If we find an unacknowledged update that is in conflict with the incoming
     // update, ignore the incoming one.
-    // for (let unackIx = 0; unackIx < this.unacknowledgedUpdates.length; ++unackIx) {
-    //   let generalUnack = this.unacknowledgedUpdates[unackIx].parsed;
-    //   if (generalUnack.hasOwnProperty("SynthSeq")) {
-    //     if (generalUpdate.hasOwnProperty("SynthSeq")) {
-    //       let unack = generalUnack.SynthSeq;
-    //       let update = generalUpdate.SynthSeq;
-    //       if (unack.synth_ix === update.synth_ix && unack.beat_ix === update.beat_ix) {
-    //         console.log(`Ignoring update: ${update}`);
-    //         return;
-    //       }
-    //     }
-    //   } else if (generalUnack.hasOwnProperty("SamplerSeq")) {
-    //     if (generalUpdate.hasOwnProperty("SamplerSeq")) {
-    //       let unack = generalUnack.SamplerSeq;
-    //       let update = generalUpdate.SamplerSeq;
-    //       if (unack.beat_ix === update.beat_ix) {
-    //         console.log(`Ignoring update: ${update}`);
-    //         return;
-    //       }
-    //     }
-    //   } else if (generalUnack.hasOwnProperty("SynthFilterCutoff")) {
-    //     if (generalUpdate.hasOwnProperty("SynthFilterCutoff")) {
-    //       let unack = generalUnack.SynthFilterCutoff;
-    //       let update = generalUpdate.SynthFilterCutoff;
-    //       if (unack.synth_ix === update.beat_ix) {
-    //         console.log(`Ignoring update: ${update}`);
-    //         return;
-    //       }
-    //     }
-    //   }
-    // }
-
+    for (let unackIx = 0; unackIx < this.unacknowledgedUpdates.length; ++unackIx) {
+      let generalUnack = this.unacknowledgedUpdates[unackIx].parsed;
+      if (generalUnack.hasOwnProperty("SynthSeq")) {
+        if (generalUpdate.hasOwnProperty("SynthSeq")) {
+          let unack = generalUnack.SynthSeq;
+          let update = generalUpdate.SynthSeq;
+          if (unack.synth_ix === update.synth_ix && unack.beat_ix === update.beat_ix) {
+            console.log(`Ignoring update: ${update}`);
+            return;
+          }
+        }
+      } else if (generalUnack.hasOwnProperty("SamplerSeq")) {
+        if (generalUpdate.hasOwnProperty("SamplerSeq")) {
+          let unack = generalUnack.SamplerSeq;
+          let update = generalUpdate.SamplerSeq;
+          if (unack.beat_ix === update.beat_ix) {
+            console.log(`Ignoring update: ${update}`);
+            return;
+          }
+        }
+      } else if (generalUnack.hasOwnProperty("SynthFilterCutoff")) {
+        if (generalUpdate.hasOwnProperty("SynthFilterCutoff")) {
+          let unack = generalUnack.SynthFilterCutoff;
+          let update = generalUpdate.SynthFilterCutoff;
+          if (unack.synth_ix === update.synth_ix) {
+            console.log(`Ignoring update: ${update}`);
+            return;
+          }
+        }
+      }
+    }
 
     if (generalUpdate.hasOwnProperty("SynthSeq")) {
       // TODO: do validation of voices
@@ -541,7 +546,7 @@ class App extends React.Component {
         }
       }
       console.assert(voices.length <= this.getNumVoices(0));
-      synthPlayVoices(this.sound.synths[synthIx], voices, this.sound.audioCtx);
+      sound.synthPlayVoices(this.sound.synths[synthIx], voices, this.sound.audioCtx);
     }
   }
 
@@ -554,7 +559,7 @@ class App extends React.Component {
       if (this.state.samplerTable[row][beatIndex]) {
         cellIx = fromCellToSampleIx(row, numRows);
         console.assert(cellIx < this.sound.drumSounds.length);
-        playSoundFromBuffer(this.sound.audioCtx, this.sound.drumSounds[cellIx]);
+        sound.playSoundFromBuffer(this.sound.audioCtx, this.sound.drumSounds[cellIx]);
       }
     }
   }

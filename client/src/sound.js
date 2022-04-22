@@ -1,3 +1,15 @@
+export {
+    initSound,
+    BASE_FREQS,
+    NOTES,
+    NUM_CHROMATIC_NOTES,
+    getFreq,
+    synthPlayVoice,
+    synthPlayVoices,
+    synthReleaseVoice,
+    playSoundFromBuffer
+}
+
 function getSoundData(filename) {
     return new Promise(function(resolve, reject) {
         let pathname = window.location.pathname;
@@ -59,18 +71,18 @@ function getFreq(note, octave) {
 
 function initSynth(audioCtx, synthSpec, masterGain) {
     // TODO: consider making this more efficient if no modulation gain/freq are 0.
-    filterNode = audioCtx.createBiquadFilter();
+    let filterNode = audioCtx.createBiquadFilter();
     filterNode.type = 'lowpass';
     filterNode.frequency.setValueAtTime(synthSpec.filterCutoff, audioCtx.currentTime);
     filterNode.Q.value = synthSpec.filterQ;
-    filterModFreq = audioCtx.createOscillator();
+    let filterModFreq = audioCtx.createOscillator();
     filterModFreq.frequency.setValueAtTime(synthSpec.filterModFreq, audioCtx.currentTime);
-    filterModGain = audioCtx.createGain();
+    let filterModGain = audioCtx.createGain();
     filterModGain.gain.setValueAtTime(synthSpec.filterModGain, audioCtx.currentTime);
     filterModFreq.connect(filterModGain).connect(filterNode.frequency);
     filterModFreq.start();
 
-    gainNode = audioCtx.createGain();
+    let gainNode = audioCtx.createGain();
     gainNode.gain.setValueAtTime(synthSpec.gain, audioCtx.currentTime);
     filterNode.connect(gainNode);
     gainNode.connect(masterGain);

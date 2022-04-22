@@ -94,6 +94,14 @@ fn update_main_state_from_client(
     }
 }
 
+fn send_client_update(
+    update: &StateUpdateFromClient,
+    to_client: &mut websocket::sender::Writer<std::net::TcpStream>) {
+    let json_msg = serde_json::to_string(update).unwrap();        
+    println!("Sending {}", json_msg);
+    to_client.send_message(&OwnedMessage::Text(json_msg)).unwrap();
+}
+
 fn main() {
     let server = Server::bind("0.0.0.0:2795").unwrap();
     thread::spawn(move || {
@@ -120,12 +128,16 @@ fn main() {
             
             let (mut from_client, mut to_client) = client.split().unwrap();
 
-            let id = ClientId(0);
+            let fake_user_id = ClientId(0);
+            let test_client_id = ClientId(1);
 
             let mut state = State::new();
+            
+            // Let's start by adding a fake user who connected before the client we're testing.
+            state.connected_clients.push((fake_user_id.0, String::from("alice")));
 
             // We first expect the connect message with the username, right?
-            let username_update = get_update_from_client(&mut from_client, id).unwrap();
+            let username_update = get_update_from_client(&mut from_client, test_client_id).unwrap();
 
             update_main_state_from_client(&username_update, &mut state);
 
@@ -135,16 +147,37 @@ fn main() {
             to_client.send_message(&OwnedMessage::Text(json_msg)).unwrap();
 
             // Got an update. Now we make a small change to it and send it back.
-            let synth_seq = get_update_from_client(&mut from_client, id).unwrap();
+            let update_from_client = get_update_from_client(&mut from_client, test_client_id).unwrap();
 
-            let mut mock_synth_seq = synth_seq.clone();
-            if let StateUpdate::SynthSeq {active_cell_ixs, ..} = &mut mock_synth_seq.update {
-                active_cell_ixs[0] += 1;
+            let mut mock_update = update_from_client.clone();
+            mock_update.client_id = fake_user_id.0;
+            match &mut mock_update.update {
+                StateUpdate::SynthSeq {active_cell_ixs, ..} => {
+                    active_cell_ixs[0] += 1;
+                }
+                StateUpdate::SamplerSeq { active_cell_ixs, ..} => {
+                    active_cell_ixs[0] += 1;
+                }
+                StateUpdate::SynthFilterCutoff { value, ..} => {
+                    *value += 0.1;
+                }
+                _ => {
+
+                }
             }
 
-            let json_msg = serde_json::to_string(&mock_synth_seq).unwrap();        
-            println!("Sending {}", json_msg);
-            to_client.send_message(&OwnedMessage::Text(json_msg)).unwrap();
+            // let synth_seq = get_update_from_client(&mut from_client, test_client_id).unwrap();
+
+            // let mut mock_synth_seq = synth_seq.clone();
+            // mock_synth_seq.client_id = fake_user_id.0;
+            // if let StateUpdate::SynthSeq {active_cell_ixs, ..} = &mut mock_synth_seq.update {
+            //     active_cell_ixs[0] += 1;
+            // }
+
+            send_client_update(&mock_update, &mut to_client);
+
+            // Now send the client's original message back to the client
+            send_client_update(&update_from_client, &mut to_client);
         }
     });
     loop
