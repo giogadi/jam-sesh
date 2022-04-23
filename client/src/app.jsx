@@ -224,6 +224,8 @@ class App extends React.Component {
     this.handleCutoffLocalUpdate = this.handleCutoffLocalUpdate.bind(this);
     this.handleCutoffGlobalUpdate = this.handleCutoffGlobalUpdate.bind(this);
 
+    this.setSynthCutoffFromParam = this.setSynthCutoffFromParam.bind(this);
+
     this.playIntervalId = null;
     
     this.clientId = null;
@@ -336,6 +338,10 @@ class App extends React.Component {
       if (this.clientId === null) {
         // Assume last item in connected_clients is me. Get client ID from there.
         this.clientId = newState.connected_clients[newState.connected_clients.length - 1][0];
+      }
+
+      for (let i = 0; i < numSynths; ++i) {
+        this.setSynthCutoffFromParam(i, newState.synth_cutoffs[i]);
       }
 
       this.setState({
@@ -510,8 +516,9 @@ class App extends React.Component {
       this.setState((oldState, props) => {
         let newCutoffs = oldState.synthCutoffs.slice();
         newCutoffs[update.synth_ix] = update.value;
-        let newUsers = oldState.users.slice();
+        this.setSynthCutoffFromParam(update.synth_ix, update.value);
 
+        let newUsers = oldState.users.slice();
         for (let i = 0; i < newUsers.length; ++i) {
           if (newUsers[i].id === sourceClientId) {
             newUsers[i].lastTouched = {
@@ -594,10 +601,13 @@ class App extends React.Component {
     }
   }
 
+  setSynthCutoffFromParam(synthIx, newCutoffParam) {
+    this.sound.synths[synthIx].filterDefault = filterParamToValue(newCutoffParam);
+  }
+
   handleCutoffLocalUpdate(synthIx, newCutoffParamStr) {
     const newCutoffParam = parseFloat(newCutoffParamStr);
-    const newCutoffValue = filterParamToValue(newCutoffParam);
-    this.sound.synths[synthIx].filterDefault = newCutoffValue;
+    this.setSynthCutoffFromParam(synthIx, newCutoffParam);
 
     let newCutoffs = this.state.synthCutoffs.slice();
     newCutoffs[synthIx] = newCutoffParam;

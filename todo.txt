@@ -1,3 +1,4 @@
+* SynthFilterCutoff stays at the client's default value after connecting and receiving the state sync.
 * Add conflict resolution to server (and client too?)
   * Need a way to unit test the server!!!
 * Get direct JSX debugging (maybe with react debugging browser plugin?)
