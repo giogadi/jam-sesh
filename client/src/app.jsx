@@ -273,7 +273,8 @@ class App extends React.Component {
 
     // STATE SYNC UPDATE
     // TODO: THIS SURE IS A HACKY WAY TO DETECT A STATE SYNC UPDATE LOL
-    if (incomingMsg.hasOwnProperty("synth_sequences")) {
+    if (incomingMsg.hasOwnProperty("synth_sequences")) {  
+      console.log("STATE SYNC UPDATE!");
       this.unacknowledgedUpdates = [];
       let newState = incomingMsg;
       let newSynthSeqs = [];
@@ -355,11 +356,14 @@ class App extends React.Component {
     }
 
     // OK NOT A STATE SYNC NOW
+    console.log("NOT A STATE SYNC");
 
     let sourceClientId = incomingMsg.client_id;
     let generalUpdate = incomingMsg.update;
 
-    if (generalUpdate.hasOwnProperty("Connect")) {
+    console.log(generalUpdate);
+
+    if (generalUpdate.hasOwnProperty("Connect")/* || generalUpdate === "Connect"*/) {
       if (this.clientId !== sourceClientId) {
         this.setState((oldState, props) => {
           let newUsers = oldState.users.slice();
@@ -373,7 +377,8 @@ class App extends React.Component {
           };
         });
       }
-    } else if (generalUpdate.hasOwnProperty("Disconnect")) {
+    } else if (generalUpdate.hasOwnProperty("Disconnect") || generalUpdate === "Disconnect") {
+
       this.setState((oldState, props) => {
         let newUsers = [];
 

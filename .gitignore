@@ -3,3 +3,4 @@
 **/*.rs.bk
 notes.txt
 node_modules
+*.swp
