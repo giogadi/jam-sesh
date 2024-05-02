@@ -62,6 +62,8 @@ fn listen_for_client_updates(
     client_id: ClientId) {
     loop {
         let result = from_client.recv_message();
+        let mut disconnect = false;
+        let mut disconnect_reason = "".to_string();
         match result {
             Ok(OwnedMessage::Text(s)) => {
                 println!("Received: {} {}", client_id.0, &s);
@@ -72,20 +74,11 @@ fn listen_for_client_updates(
                 }).unwrap();
             }
             Ok(OwnedMessage::Close(maybe_close_data)) => {
-                let disconnect_string = match maybe_close_data {
+                disconnect = true;
+                disconnect_reason = match maybe_close_data {
                     Some(close_data) => close_data.reason,
                     None => "".to_string(),
                 };
-                println!(
-                    "Client {} disconnected: {}",
-                    client_id.0, disconnect_string
-                );
-                to_main.send(StateUpdateFromClient {
-                    client_id: client_id.0,
-                    update: StateUpdate::Disconnect
-                }).unwrap();
-                // Stop this thread on disconnect
-                return;
             }
             Ok(_) => {
                 println!("Client listener: unexpected message");
@@ -96,7 +89,21 @@ fn listen_for_client_updates(
             // categories".
             Err(e) => {
                 println!("Client listener error: {}", e);
+                disconnect = true;
+                disconnect_reason = "no more data".to_string();
             }
+        }
+        if disconnect {
+            println!(
+                        "Client {} disconnected: {}",
+                        client_id.0, disconnect_reason
+                    );
+                    to_main.send(StateUpdateFromClient {
+                        client_id: client_id.0,
+                        update: StateUpdate::Disconnect
+                    }).unwrap();
+                    // Stop this thread on disconnect
+                    return;
         }
     }
 }
