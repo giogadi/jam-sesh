@@ -3,6 +3,8 @@
 import * as sound from './sound.js'
 
 const CLIENT_COLORS = ['cyan', 'magenta', 'orange', 'lightblue', 'navy', 'purple', 'aquamarine', 'darkgreen'];
+const CLIENT_COLORS_TEXT = ['black', 'black', 'black', 'black', 'white', 'white', 'blac', 'white'];
+
 
 class SequencerTable extends React.Component {
   constructor(props) {
@@ -31,15 +33,15 @@ class SequencerTable extends React.Component {
       let className = this.props.setting[r][c] ?
         "sequencerCell sequencerCellActive" :
         "sequencerCell sequencerCellInactive";
+      if (onBeat) {
+        className += "OnBeat";
+      }
       let highlights = this.props.userHighlights;
       for (let i = 0; i < highlights.length; ++i) {
         if (highlights[i].row === r && highlights[i].col === c) {
           className += " highlightCell";
           break;
         }
-      }
-      if (onBeat) {
-        className += " OnBeat";
       }
       return className;
     };
@@ -60,6 +62,7 @@ class SequencerTable extends React.Component {
           <tbody>
             { rows.map((r) =>
                 <tr key={r.toString()}>
+                  <th>{this.props.seqRowHeaders[r]}</th>
                   { columns.map((c) =>
                     <td className="sequencerTd" key={c.toString()}>
                       {
@@ -97,21 +100,30 @@ class SynthComponent extends React.Component {
       sliderStyle = { backgroundColor: color };
     }
 
+    let seqRowHeaders = [];
+    for (let i = 0; i < this.props.sequencerMatrix.length; ++i) {
+        seqRowHeaders.push(fromRowToNoteName(i, this.props.sequencerMatrix.length));
+    }
+
     return (
       <div>
-        <span className={sliderClass} style={sliderStyle}>
-          <input ref={this.cutoffInput}
-            type="range"
-            value={this.props.cutoff}
-            onInput={(e) => this.props.onCutoffLocalUpdate(e.target.value)}
-            min="0" max="1" step="0.01"
-          />
-        </span>        
+        <div className={sliderClass} style={sliderStyle}>
+          <label>
+            Cutoff
+            <input ref={this.cutoffInput}
+              type="range"
+              value={this.props.cutoff}
+              onInput={(e) => this.props.onCutoffLocalUpdate(e.target.value)}
+              min="0" max="1" step="0.01"
+            />
+          </label>
+        </div>        
         <SequencerTable
           setting={this.props.sequencerMatrix}
           beatIx={this.props.beatIx}
           onClick={this.props.onClick}
-          userHighlights={this.props.seqHighlights} /> 
+          userHighlights={this.props.seqHighlights}
+          seqRowHeaders={seqRowHeaders}/> 
       </div>
     );
   }
@@ -119,7 +131,10 @@ class SynthComponent extends React.Component {
 
 function UserList(props) {
   let getItemStyle = (id) => {
-    return { backgroundColor: CLIENT_COLORS[id % CLIENT_COLORS.length] };
+    return {
+      backgroundColor: CLIENT_COLORS[id % CLIENT_COLORS.length],
+      color: CLIENT_COLORS_TEXT[id % CLIENT_COLORS_TEXT.length]
+    };
   };
   let listItems = props.users.map((item) => <li key={item.id}><span style={getItemStyle(item.id)}>{item.name}</span></li>);
   return (
@@ -150,6 +165,26 @@ function fromCellToFreq(row, numRows) {
 
 function fromCellToSampleIx(row, numRows) {
   return (numRows - 1) - row;
+}
+
+const NOTE_NAMES = [
+    'A',
+    'Bb',
+    'B',
+    'C',
+    'Db',
+    'D',
+    'Eb',
+    'E',
+    'F',
+    'Gb',
+    'G',
+    'Ab'
+]
+function fromRowToNoteName(row, numRows) {
+  let noteIx = (numRows - 1) - row;
+  noteIx = noteIx % NOTE_NAMES.length; 
+  return NOTE_NAMES[noteIx];
 }
 
 function openSocket() {
@@ -595,7 +630,7 @@ class App extends React.Component {
 
   handlePlayButtonClick() {
     if (this.playIntervalId === null) {
-      let bpm = 200;
+      let bpm = 480;
       const ticksPerBeat = (1 / bpm) * 60 * 1000;
       this.playIntervalId = window.setInterval(this.perBeat, ticksPerBeat);
       this.setState({ beatIndex: -1 });
@@ -794,12 +829,14 @@ class App extends React.Component {
         }
       }
     }
+    let drumSeqHeaders = ['Snare', 'Kick'];
     return (
       <div>
         <UserList users={this.state.users} />
         <button onClick={this.handlePlayButtonClick}>Play/Stop</button>
         { synthIxs.map((s) => 
             <div key={s.toString()}>
+              <h2>Synth {s}</h2>
               <SynthComponent
                 sequencerMatrix={this.state.synthSeqTables[s]}
                 cutoff={this.state.synthCutoffs[s]}
@@ -812,11 +849,13 @@ class App extends React.Component {
               /> 
               <br />
             </div>)}
+        <h2>Drum machine</h2>
         <SequencerTable
           setting={this.state.samplerTable}
           beatIx={this.state.beatIndex}
           onClick={this.handleSamplerClick} 
           userHighlights={samplerSeqHighlights}
+          seqRowHeaders={drumSeqHeaders}
         />
       </div>
     );
