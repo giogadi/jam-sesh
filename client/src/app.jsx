@@ -680,24 +680,27 @@ class App extends React.Component {
   newSeqFromClick(seq, row, col, numVoices) {
     const numRows = seq.length;
 
-    // QUESTION: is it safe to define newTable in terms of state *outside of this.setState* 
-    // and then set new state w.r.t. newTable (and therefore in terms of old state)??
-    if (!seq[row][col]) {
+    let newTable = seq.slice();
+    if (seq[row][col]) {
+       newTable[row][col] = 0; 
+    } else {
       // count number of active voices in this column
       let activeVoices = 0;
+      let lastVoiceRow = 0;
       for (let r = 0; r < numRows; ++r) {
         if (seq[r][col]) {
           ++activeVoices;
+          lastVoiceRow = r;
         }
       }
       if (activeVoices >= numVoices) {
-        return null;
+        newTable[lastVoiceRow][col] = 0;
       }
-    }
+      newTable[row][col] = 1;
 
-    let newTable = seq.slice();
-    newTable[row][col] = newTable[row][col] ? 0 : 1;
+    }
     return newTable;
+
   }
 
   // TODO: do they have to be TOTAL copies?

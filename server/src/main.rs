@@ -11,12 +11,12 @@ use websocket::OwnedMessage;
 use jam_sesh_server::*;
 
 fn update_main_state_from_client(
-    update: &StateUpdateFromClient, state: &mut State, connections: &mut Vec<ClientInfo>) {
+    update: &RoomStateUpdateFromClient, state: &mut RoomState, connections: &mut Vec<ClientInfo>) {
     match &update.update {
-        StateUpdate::Connect {username} => {
+        RoomStateUpdate::Connect {username} => {
             state.connected_clients.push((update.client_id,username.clone()));
         }
-        StateUpdate::Disconnect => {
+        RoomStateUpdate::Disconnect => {
             // TODO: can these 2 be the same list?
 
             // Remove from list of connections sent to clients
@@ -36,28 +36,28 @@ fn update_main_state_from_client(
             assert!(disconnecting_ix.is_some());
             connections.swap_remove(disconnecting_ix.unwrap());
         }
-        StateUpdate::SynthSeq { synth_ix, beat_ix, active_cell_ixs, .. } => {
+        RoomStateUpdate::SynthSeq { synth_ix, beat_ix, active_cell_ixs, .. } => {
             let voices = &mut state.synth_sequences[*synth_ix as usize][*beat_ix as usize];
             assert!(voices.len() == active_cell_ixs.len(), "voices={:?}, active_cell_ixs={:?}", voices, active_cell_ixs);
             for (i,v) in active_cell_ixs.iter().enumerate() {
                 voices[i] = *v;
             }
         }
-        StateUpdate::SamplerSeq { beat_ix, active_cell_ixs, .. } => {
+        RoomStateUpdate::SamplerSeq { beat_ix, active_cell_ixs, .. } => {
             let voices = &mut state.sampler_sequence[*beat_ix as usize];
             assert!(voices.len() == active_cell_ixs.len());
             for (i,v) in active_cell_ixs.iter().enumerate() {
                 voices[i] = *v;
             }
         }
-        StateUpdate::SynthFilterCutoff { synth_ix, value } => {
+        RoomStateUpdate::SynthFilterCutoff { synth_ix, value } => {
             state.synth_cutoffs[*synth_ix as usize] = *value;
         }
     }
 }
 
 fn listen_for_client_updates(
-    to_main: mpsc::Sender<StateUpdateFromClient>,
+    to_main: mpsc::Sender<RoomStateUpdateFromClient>,
     mut from_client: websocket::receiver::Reader<std::net::TcpStream>,
     client_id: ClientId) {
     loop {
@@ -67,8 +67,8 @@ fn listen_for_client_updates(
         match result {
             Ok(OwnedMessage::Text(s)) => {
                 println!("Received: {} {}", client_id.0, &s);
-                let update: StateUpdate = serde_json::from_str(&s).unwrap();
-                to_main.send(StateUpdateFromClient {
+                let update: RoomStateUpdate = serde_json::from_str(&s).unwrap();
+                to_main.send(RoomStateUpdateFromClient {
                     client_id: client_id.0,
                     update: update
                 }).unwrap();
@@ -98,9 +98,9 @@ fn listen_for_client_updates(
                         "Client {} disconnected: {}",
                         client_id.0, disconnect_reason
                     );
-                    to_main.send(StateUpdateFromClient {
+                    to_main.send(RoomStateUpdateFromClient {
                         client_id: client_id.0,
-                        update: StateUpdate::Disconnect
+                        update: RoomStateUpdate::Disconnect
                     }).unwrap();
                     // Stop this thread on disconnect
                     return;
@@ -120,7 +120,7 @@ fn main() {
     let (to_main, from_threads) = mpsc::channel();
     let connections: Arc<Mutex<Vec<ClientInfo>>> =
         Arc::new(Mutex::new(Vec::new()));
-    let state: Arc<Mutex<State>> = Arc::new(Mutex::new(State::new()));
+    let state: Arc<Mutex<RoomState>> = Arc::new(Mutex::new(RoomState::new()));
     // TODO: I hate these names
     let thread_connections = Arc::clone(&connections);
     thread::spawn(move || {
@@ -175,8 +175,8 @@ fn main() {
             |c| c.id.0 == msg_from_client.client_id).unwrap();
         if !source_client.sent_state_sync {
             let accept_msg = match msg_from_client.update {
-                StateUpdate::Connect {..} => true,
-                StateUpdate::Disconnect => true,
+                RoomStateUpdate::Connect {..} => true,
+                RoomStateUpdate::Disconnect => true,
                 _ => false
             };
             if !accept_msg {
@@ -188,7 +188,7 @@ fn main() {
 
         // If it was a connect message, send the state sync update directly to that client.
         // The client can assume that _they_ are the last item in connected_clients.
-        if let StateUpdate::Connect {..} = msg_from_client.update {
+        if let RoomStateUpdate::Connect {..} = msg_from_client.update {
             // We recompute the source client because its location could have
             // potentially changed in the above state update
             let source_client = connections.iter_mut().find(

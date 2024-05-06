@@ -5,7 +5,7 @@ extern crate serde_derive;
 pub struct ClientId(pub i32);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct State {
+pub struct RoomState {
     pub num_synth_note_rows: i32,
     pub num_sampler_note_rows: i32,
     pub synth_sequences: Vec<Vec<Vec<i32>>>,
@@ -13,8 +13,8 @@ pub struct State {
     pub sampler_sequence: Vec<Vec<i32>>,
     pub connected_clients: Vec<(i32,String)>
 }
-impl State {
-    pub fn new() -> State {
+impl RoomState {
+    pub fn new() -> RoomState {
         const NUM_SYNTHS: usize = 2;
         const NUM_BEATS: usize = 16;
         const NUM_SYNTH_VOICES_0: usize = 2;
@@ -24,7 +24,7 @@ impl State {
         const NUM_SAMPLER_NOTE_ROWS: usize = 2;
         let synth_sequence0 = vec![vec![-1; NUM_SYNTH_VOICES_0]; NUM_BEATS];
         let synth_sequence1 = vec![vec![-1; NUM_SYNTH_VOICES_1]; NUM_BEATS];
-        let mut state = State {
+        let mut state = RoomState {
             num_synth_note_rows: NUM_SYNTH_NOTE_ROWS as i32,
             num_sampler_note_rows: NUM_SAMPLER_NOTE_ROWS as i32,
             synth_sequences: vec![synth_sequence0, synth_sequence1],
@@ -41,7 +41,7 @@ impl State {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum StateUpdate {
+pub enum RoomStateUpdate {
     Connect {
         username: String
     },
@@ -64,7 +64,11 @@ pub enum StateUpdate {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct StateUpdateFromClient {
+pub struct RoomStateUpdateFromClient {
     pub client_id: i32,
-    pub update: StateUpdate
+    pub update: RoomStateUpdate
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RoomId(pub i32);
+
