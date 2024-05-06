@@ -87,19 +87,19 @@ function initSynth(audioCtx, synthSpec, masterGain) {
     filterNode.connect(gainNode);
     gainNode.connect(masterGain);
     let voices = [];
-    for (let i = 0; i < synthSpec.voiceSpecs.length; ++i) {
+    for (let i = 0; i < synthSpec.numVoices; ++i) {
         // TODO: consider making this more efficient if osc2Gain == 0 by only initializing one oscillator.
-        let osc2Detune = synthSpec.voiceSpecs[i].osc2Detune;
-        let osc2GainValue = synthSpec.voiceSpecs[i].osc2Gain;
+        let osc2Detune = synthSpec.osc2Detune;
+        let osc2GainValue = synthSpec.osc2Gain;
 
         let defaultFreq = getFreq(NOTES.A, 3);
 
         let osc1 = audioCtx.createOscillator();
-        osc1.type = synthSpec.voiceSpecs[i].osc1Type;
+        osc1.type = synthSpec.osc1Type;
         osc1.frequency.setValueAtTime(defaultFreq, audioCtx.currentTime);
 
         let osc2 = audioCtx.createOscillator();
-        osc2.type = synthSpec.voiceSpecs[i].osc2Type;
+        osc2.type = synthSpec.osc2Type;
         osc2.detune.setValueAtTime(osc2Detune, audioCtx.currentTime);
         osc2.frequency.setValueAtTime(defaultFreq, audioCtx.currentTime);
 
@@ -134,7 +134,6 @@ function initSynth(audioCtx, synthSpec, masterGain) {
         sustainLevel: (synthSpec.sustainLevel === undefined) ? 1.0 : synthSpec.sustainLevel,
         releaseTime: synthSpec.releaseTime,
         filterDefault: synthSpec.filterCutoff,
-        // TODO: These should be per-voice.
         filterEnvAttack: synthSpec.filterEnvAttack,
         filterEnvRelease: synthSpec.filterEnvRelease,
         filterEnvIntensity: synthSpec.filterEnvIntensity
@@ -168,20 +167,11 @@ function initSound() {
                 filterEnvAttack: 0.0,
                 filterEnvRelease: 0.0,
                 filterEnvIntensity: 0.0,
-                voiceSpecs: [
-                    {
-                        osc1Type: 'square',
-                        osc2Type: 'sawtooth',
-                        osc2Gain: 0.5,
-                        osc2Detune: 50
-                    },
-                    {
-                        osc1Type: 'square',
-                        osc2Type: 'sawtooth',
-                        osc2Gain: 0.5,
-                        osc2Detune: 50
-                    }
-                ]
+                osc1Type: 'square',
+                osc2Type: 'sawtooth',
+                osc2Gain: 0.5,
+                osc2Detune: 50,
+                numVoices: 2
             },
             {
                 gain: 0.25,
@@ -194,14 +184,11 @@ function initSound() {
                 filterEnvAttack: 0.0,
                 filterEnvRelease: 0.0,
                 filterEnvIntensity: 0.0,
-                voiceSpecs: [
-                    {
-                        osc1Type: 'square',
-                        osc2Type: 'sawtooth',
-                        osc2Gain: 0.0,
-                        osc2Detune: 0
-                    }
-                ]
+                numVoices: 1, 
+                osc1Type: 'square',
+                osc2Type: 'sawtooth',
+                osc2Gain: 0.0,
+                osc2Detune: 0
             },
             {
                 // Filter mod env test
@@ -215,14 +202,12 @@ function initSound() {
                 filterEnvAttack: 0.05,
                 filterEnvRelease: 0.1,
                 filterEnvIntensity: 300.0,
-                voiceSpecs: [
-                    {
-                        osc1Type: 'sawtooth',
-                        osc2Type: 'sawtooth',
-                        osc2Gain: 0.3,
-                        osc2Detune: -1200
-                    }
-                ]
+                numVoices: 1,
+                osc1Type: 'sawtooth',
+                osc2Type: 'sawtooth',
+                osc2Gain: 0.3,
+                osc2Detune: -1200
+
             },
             {
                 // Bass
@@ -236,12 +221,11 @@ function initSound() {
                 filterEnvAttack: 0.0,
                 filterEnvRelease: 0.0,
                 filterEnvIntensity: 0.0,
-                voiceSpecs: [
-                    { osc1Type: 'square',
-                      osc2Type: 'sine',
-                      osc2Gain: 0.0,
-                      osc2Detune: 0.0 }
-                ]
+                numVoices: 1,
+                osc1Type: 'square',
+                osc2Type: 'sine',
+                osc2Gain: 0.0,
+                osc2Detune: 0.0 
             },
             {
                 // Laserbeam chord
@@ -257,26 +241,13 @@ function initSound() {
                 filterEnvAttack: 0.0,
                 filterEnvRelease: 0.0,
                 filterEnvIntensity: 0.0,
-                voiceSpecs: [
-                    { osc1Type: 'sawtooth',
-                      osc2Type: 'sawtooth',
-                      osc2Gain: 0.8,
-                      osc2Detune: 30.0 },
-                    { osc1Type: 'sawtooth',
-                      osc2Type: 'sawtooth',
-                      osc2Gain: 0.8,
-                      osc2Detune: 20.0 },
-                    { osc1Type: 'sawtooth',
-                      osc2Type: 'sawtooth',
-                      osc2Gain: 0.8,
-                      osc2Detune: 20.0 },
-                    { osc1Type: 'sawtooth',
-                      osc2Type: 'sawtooth',
-                      osc2Gain: 0.8,
-                      osc2Detune: 20.0 }
-                ]
+                numVoices: 4,
+                osc1Type: 'sawtooth',
+                osc2Type: 'sawtooth',
+                osc2Gain: 0.8,
+                osc2Detune: 30.0
             }
-        ];
+        ]; 
         let synths = [];
         let auxSynths = [];
         for (let i = 0; i < synthSpecs.length; ++i) {
@@ -284,26 +255,7 @@ function initSound() {
             auxSynths.push(initSynth(audioCtx, synthSpecs[i], masterGain));
         }
 
-        // drone sound
-        // let droneSource = audioCtx.createBufferSource();
-        // droneSource.buffer = decodedSounds[3];
-        // droneSource.loop = true;
-        // droneSource.loopStart = 1.0;
-        // // SUPER weird: for some reason we *need* to set loopEnd for the sample to loop correctly
-        // // (even though the sample length is exactly this length).
-        // droneSource.loopEnd = 4.0
-        // let droneFilter = audioCtx.createBiquadFilter();
-        // droneFilter.type = 'lowpass';
-        // // droneFilter.frequency.setValueAtTime(100, audioCtx.currentTime);
-        // droneFilter.frequency.value = 100.0;
-        // let droneGain = audioCtx.createGain();
-        // // droneGain.gain.setValueAtTime(0.25, audioCtx.currentTime);
-        // droneGain.gain.value = 0.0;
-        // droneSource.connect(droneFilter);
-        // droneFilter.connect(droneGain);
-        // droneGain.connect(masterGain);
-        // droneSource.start(0);
-
+        
         let sampleSounds = [];
         for (let i = 0; i < decodedSounds.length; ++i) {
             let sampleGainNode = audioCtx.createGain();
@@ -317,9 +269,6 @@ function initSound() {
         return {
             audioCtx: audioCtx,
             drumSounds: sampleSounds,
-            // droneNode: droneSource,
-            // droneFilter: droneFilter,
-            // droneGain: droneGain,
             synths: synths,
             auxSynths: auxSynths,
             masterGain: masterGain
