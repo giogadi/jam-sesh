@@ -1,0 +1,62 @@
+:root {
+    --seq-cell-size: 20px;
+}
+
+::-webkit-scrollbar {
+    -webkit-appearance: none;
+    width: 7px;
+}
+
+::-webkit-scrollbar-thumb {
+    border-radius: 4px;
+    background-color: rgba(0,0,0,.5);
+    -webkit-box-shadow: 0 0 1px rgba(255,255,255,.5);
+}
+
+.sequencerTable {
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+
+.sequencerTd {
+    border: 2px solid #000;
+    background: #0f0;
+    padding: 0;
+}
+
+.sequencerCell {
+    background: #fff;
+    border: none;
+    float: left;
+    font-size: 24px;
+    font-weight: bold;
+    line-height: 34px;
+    height: var(--seq-cell-size);
+    padding: 0;
+    text-align: center;
+    width: var(--seq-cell-size);
+}
+
+.sequencerCellActive {
+    background: rgb(200,0,0);
+}
+.sequencerCellInactive {
+    background: rgb(100,100,100);
+}
+.sequencerCellActiveOnBeat {
+    background: rgb(200,0,0,0.5);
+}
+.sequencerCellInactiveOnBeat {
+    background: rgb(100,100,100,0.5);
+}
+
+.highlightCell {
+    border: 3px solid cyan
+}
+
+.tableContainer {
+    border: 2px solid #000;
+    width: calc(16 * var(--seq-cell-size) + 100px);
+    height: calc(8 * var(--seq-cell-size) + 50px);
+    overflow: scroll;
+}
