@@ -59,6 +59,11 @@ function getFreq(note, octave) {
     return BASE_FREQS[note] * (1 << octave);
 }
 
+function midiToFreq(midi) {
+    let a4 = 69;
+    return 440.0 * Math.pow(2.0, (midi - a4) / 12.0);
+}
+
 function initSynth(audioCtx, synthSpec, masterGain) {
     // TODO: consider making this more efficient if no modulation gain/freq are 0.
     let filterNode = audioCtx.createBiquadFilter();

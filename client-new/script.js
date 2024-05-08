@@ -132,10 +132,13 @@ function onSocketMessage(e) {
             buildJamUI(); 
 
             gHasReceivedState = true;
-        }
+        } 
 
-        
+        return;
     }
+
+    // NOT A SYNC MESSAGE
+
 }
 
 function buildJamUI() {
@@ -155,6 +158,36 @@ function buildJamUI() {
         jamDiv: jamDiv,
         synthUIs: synthUIs
     };
+
+    setUIFromState();
+}
+
+function setUIFromState() {
+    const numSynths = gJamState.synthSeqs.length;
+    for (let synthIx = 0; synthIx < numSynths; ++synthIx) {
+        let seq = gJamState.synthSeqs[synthIx];
+        let synthUI = gJamUI.synthUIs[synthIx]   
+        for (let stepIx = 0; stepIx < seq.length; ++stepIx) {
+            // clear out the sequence step first
+            for (let r = 0; r < synthUI.numRows; ++r) {
+                let btn = synthUI.seqButtons[r*synthUI.numCols + stepIx];
+                btn.className = "sequencerCell sequencerCellInactive";
+            }
+
+            let seqStep = seq[stepIx];
+            for (let voiceIx = 0; voiceIx < seqStep.length; ++voiceIx) {
+                let note = seqStep[voiceIx];
+                if (note < 0) {
+                    continue;
+                }
+                let btn = midiStepToSynthUIBtn(synthIx, stepIx, note);
+                if (btn === null) {
+                    continue;
+                }
+                btn.className = "sequencerCell sequencerCellActive";
+            }
+        }
+    }
 }
 
 function buildSynthUI(rootNode, synthIx) {
@@ -178,13 +211,28 @@ function buildSynthUI(rootNode, synthIx) {
             col.className = "sequencerTd";
             let btn = createElementAsChild(col, "button");
             btn.className = "sequencerCell sequencerCellInactive";
-            seqButtons.push(seqButtons);
+            seqButtons.push(btn);
         }
     }
 
     return {
+        numRows: numRows,
+        numCols: numCols,
+        startNote: 60, // C4
         seqButtons: seqButtons
     };
+}
+
+function midiStepToSynthUIBtn(synthIx, stepIx, midiNote) {
+    let synthUI = gJamUI.synthUIs[synthIx];
+    let noteOffset = midiNote - synthUI.startNote;
+    if (noteOffset < 0 || noteOffset >= synthUI.numRows) {
+        return null;
+    }
+    let rowIx = (synthUI.numRows - 1) - noteOffset;
+    console.assert(stepIx >= 0)
+    console.assert(stepIx < synthUI.numCols);
+    return synthUI.seqButtons[rowIx * synthUI.numCols + stepIx];
 }
 
 async function initJamSesh(username) {
