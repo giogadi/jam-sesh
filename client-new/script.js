@@ -181,11 +181,7 @@ function onSocketMessage(e) {
                 // TODO Is this bad?
                 gJamState = { 
                     synthSeqs: incomingMsg.synth_sequences,
-                    // TODOOOOOOOOOO
-                    synthParams:  [
-                        defaultSynthParams(),
-                        defaultSynthParams()
-                    ]
+                    synthParams: incomingMsg.synth_params 
                 };
             }
 
@@ -221,6 +217,15 @@ function onSocketMessage(e) {
 
         // Update UI
         setSeqStepFromState(update.synth_ix, update.beat_ix);
+    } else if (generalUpdate.hasOwnProperty("SynthParam")) {
+        let update = generalUpdate.SynthParam;
+        let params = gJamState.synthParams[update.synth_ix];
+        params[update.param_ix] = update.value;
+        
+        // Update UI
+        let synthUI = gJamUI.synthUIs[update.synth_ix];
+        let slider = synthUI.paramSliders[update.param_ix];
+        slider.value = update.value;
     }
 }
 
@@ -276,6 +281,11 @@ function setUIFromState() {
         for (let stepIx = 0; stepIx < seq.length; ++stepIx) {
             setSeqStepFromState(synthIx, stepIx); 
         }
+        let params = gJamState.synthParams[synthIx];
+        for (let paramIx = 0; paramIx < params.length; ++paramIx) {
+            let slider = synthUI.paramSliders[paramIx];
+            slider.value = params[paramIx];
+        }
     }
 }
 
@@ -289,6 +299,7 @@ function buildSynthUI(rootNode, synthIx) {
     synthHeader.textContent = "Synth " + synthIx;
 
     let params = gJamState.synthParams[synthIx];
+    let paramSliders = [];
     for (let paramIx = 0; paramIx < params.length; ++paramIx) {
         let spec = SYNTH_PARAMS[paramIx];
         let sliderDiv = createElementAsChild(rootNode, "div");
@@ -301,6 +312,8 @@ function buildSynthUI(rootNode, synthIx) {
         slider.max = spec.maxValue;
         slider.step = spec.step;
         slider.className = "filterSlider";
+        slider.addEventListener("change", (event) => onSliderChange(synthIx, paramIx, event));
+        paramSliders.push(slider);
     }
 
     let tableDiv = createElementAsChild(rootNode, "div");
@@ -326,11 +339,11 @@ function buildSynthUI(rootNode, synthIx) {
         numRows: numRows,
         numCols: numCols,
         startNote: 60, // C4
+        paramSliders: paramSliders,
         seqButtons: seqButtons
     };
 }
 
-// IDEA: what if the order of the voices were _always_ FIFO? I think that's a great idea, let's do that.
 function onSeqClick(synthIx, clickR, clickC) {
     // console.log("CLICK " + synthIx + " " + clickR + " " + clickC);
     let synthSeq = gJamState.synthSeqs[synthIx];
@@ -349,6 +362,21 @@ function onSeqClick(synthIx, clickR, clickC) {
                 beat_ix: stepIx,
                 active_cell_ixs: seqStep.slice(),
                 clicked_cell_ix: midiNote
+            }
+        };
+        const jsonMsg = JSON.stringify(msg);
+        gSocket.send(jsonMsg);
+        console.log("Sent " + jsonMsg);
+    }
+}
+
+function onSliderChange(synthIx, paramIx, event) {
+    if (gSocket !== null) {
+        let msg = {
+            SynthParam: {
+                synth_ix: synthIx,
+                param_ix: paramIx,
+                value: parseFloat(event.target.value)
             }
         };
         const jsonMsg = JSON.stringify(msg);

@@ -50,8 +50,8 @@ fn update_main_state_from_client(
                 voices[i] = *v;
             }
         }
-        RoomStateUpdate::SynthFilterCutoff { synth_ix, value } => {
-            state.synth_cutoffs[*synth_ix as usize] = *value;
+        RoomStateUpdate::SynthParam { synth_ix, param_ix, value } => {
+            state.synth_params[*synth_ix as usize][*param_ix as usize] = *value;
         }
     }
 }
