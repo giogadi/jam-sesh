@@ -2,6 +2,23 @@
 
 import {initSound, initSynth, disconnectSynth} from './sound.js'
 
+const SYNTH_PARAMS = [
+    {
+        name: "Cutoff",
+        defaultValue: 6000,
+        minValue: 0,
+        maxValue: 22000,
+        step: 1
+    },
+    {
+        name: "Attack",
+        defaultValue: 0.005,
+        minValue: 0.001,
+        maxValue: 1,
+        step: 0.001
+    }
+];
+
 function createElementAsChild(parentElement, tagName) {
     let child = document.createElement(tagName);
     return parentElement.appendChild(child);
@@ -53,12 +70,24 @@ function seqStepToggleVoiceLifo(seqStep, midiNote) {
     }
 }
 
+function defaultSynthParams() {
+    let synthParams = [];
+    for (let ii = 0; ii < SYNTH_PARAMS.length; ++ii) {
+        synthParams.push(SYNTH_PARAMS[ii].defaultValue);
+    }
+    return synthParams;
+}
+
 // init gJamState
 {
     gJamState = {
         synthSeqs: [
             createEmptySeq(16, 1),
             createEmptySeq(16, 1)
+        ],
+        synthParams: [
+            defaultSynthParams(),
+            defaultSynthParams()
         ]
     }
 }
@@ -150,8 +179,13 @@ function onSocketMessage(e) {
             gJamState = null;
             {
                 // TODO Is this bad?
-                gJamState = {
-                    synthSeqs: incomingMsg.synth_sequences
+                gJamState = { 
+                    synthSeqs: incomingMsg.synth_sequences,
+                    // TODOOOOOOOOOO
+                    synthParams:  [
+                        defaultSynthParams(),
+                        defaultSynthParams()
+                    ]
                 };
             }
 
@@ -247,10 +281,27 @@ function setUIFromState() {
 
 function buildSynthUI(rootNode, synthIx) {
     let synthSeq = gJamState.synthSeqs[synthIx];
-    // let numRows = stateSync.num_synth_note_rows;
     let numRows = 14;
     let numCols = synthSeq.length;
     let numVoices = synthSeq[0].length; 
+
+    let synthHeader = createElementAsChild(rootNode, "h2");
+    synthHeader.textContent = "Synth " + synthIx;
+
+    let params = gJamState.synthParams[synthIx];
+    for (let paramIx = 0; paramIx < params.length; ++paramIx) {
+        let spec = SYNTH_PARAMS[paramIx];
+        let sliderDiv = createElementAsChild(rootNode, "div");
+        let labelNode = createElementAsChild(sliderDiv, "label");
+        labelNode.textContent = spec.name;
+        let slider = createElementAsChild(labelNode, "input");
+        slider.value = params[paramIx].value;
+        slider.type = "range";
+        slider.min = spec.minValue;
+        slider.max = spec.maxValue;
+        slider.step = spec.step;
+        slider.className = "filterSlider";
+    }
 
     let tableDiv = createElementAsChild(rootNode, "div");
     tableDiv.className = "tableContainer";

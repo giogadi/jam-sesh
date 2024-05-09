@@ -32,10 +32,10 @@ impl RoomState {
             sampler_sequence: vec![vec![-1; NUM_SAMPLER_VOICES]; NUM_BEATS],
             connected_clients: vec![]
         };
-        state.synth_sequences[0][0][0] = (NUM_SYNTH_NOTE_ROWS-1) as i32;
-        state.synth_sequences[0][4][0] = (NUM_SYNTH_NOTE_ROWS-1) as i32;
-        state.synth_sequences[0][8][0] = (NUM_SYNTH_NOTE_ROWS-1) as i32;
-        state.synth_sequences[0][12][0] = (NUM_SYNTH_NOTE_ROWS-1) as i32;
+        state.synth_sequences[0][0][0] = 60 as i32;
+        state.synth_sequences[0][4][0] = 60 as i32;
+        state.synth_sequences[0][8][0] = 60 as i32;
+        state.synth_sequences[0][12][0] = 60 as i32;
         state
     }
 }
