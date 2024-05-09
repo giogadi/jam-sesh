@@ -9,6 +9,7 @@ function createElementAsChild(parentElement, tagName) {
 
 let gSound = null;
 let gSocket = null;
+let gClientId = null;
 let gHasReceivedState = false; 
 let gMySound = null;
 let gJamUI = null;
@@ -157,6 +158,9 @@ function onSocketMessage(e) {
             gMySound = initMySound(); 
             buildJamUI(); 
 
+            // Assume last item in connected_clients is me. Get client ID from there.
+            gClientId = incomingMsg.connected_clients[incomingMsg.connected_clients.length - 1][0];
+
             gHasReceivedState = true;
         } 
 
@@ -164,7 +168,26 @@ function onSocketMessage(e) {
     }
 
     // NOT A SYNC MESSAGE
+    let sourceClientId = incomingMsg.client_id;
+    let generalUpdate = incomingMsg.update;
 
+    console.log(generalUpdate);
+    if (sourceClientId === gClientId) {
+        return;
+    }
+
+    if (generalUpdate.hasOwnProperty("SynthSeq")) {
+        // Update state from message
+        let update = generalUpdate.SynthSeq;
+        let synthSeq = gJamState.synthSeqs[update.synth_ix];
+        let seqStep = synthSeq[update.beat_ix];
+        for (let i = 0; i < seqStep.length; ++i) {
+            seqStep[i] = update.active_cell_ixs[i];
+        }
+
+        // Update UI
+        setSeqStepFromState(update.synth_ix, update.beat_ix);
+    }
 }
 
 function buildJamUI() {
@@ -188,30 +211,36 @@ function buildJamUI() {
     setUIFromState();
 }
 
+function setSeqStepFromState(synthIx, stepIx) {
+    let synthUI = gJamUI.synthUIs[synthIx];
+    let seq = gJamState.synthSeqs[synthIx];
+    // clear out the sequence step first
+    for (let r = 0; r < synthUI.numRows; ++r) {
+        let btn = synthUI.seqButtons[r*synthUI.numCols + stepIx];
+        btn.className = "sequencerCell sequencerCellInactive";
+    }
+
+    let seqStep = seq[stepIx];
+    for (let voiceIx = 0; voiceIx < seqStep.length; ++voiceIx) {
+        let note = seqStep[voiceIx];
+        if (note < 0) {
+            continue;
+        }
+        let btn = midiStepToSynthUIBtn(synthIx, stepIx, note);
+        if (btn === null) {
+            continue;
+        }
+        btn.className = "sequencerCell sequencerCellActive";
+    }
+}
+
 function setUIFromState() {
     const numSynths = gJamState.synthSeqs.length;
     for (let synthIx = 0; synthIx < numSynths; ++synthIx) {
         let seq = gJamState.synthSeqs[synthIx];
         let synthUI = gJamUI.synthUIs[synthIx]   
         for (let stepIx = 0; stepIx < seq.length; ++stepIx) {
-            // clear out the sequence step first
-            for (let r = 0; r < synthUI.numRows; ++r) {
-                let btn = synthUI.seqButtons[r*synthUI.numCols + stepIx];
-                btn.className = "sequencerCell sequencerCellInactive";
-            }
-
-            let seqStep = seq[stepIx];
-            for (let voiceIx = 0; voiceIx < seqStep.length; ++voiceIx) {
-                let note = seqStep[voiceIx];
-                if (note < 0) {
-                    continue;
-                }
-                let btn = midiStepToSynthUIBtn(synthIx, stepIx, note);
-                if (btn === null) {
-                    continue;
-                }
-                btn.className = "sequencerCell sequencerCellActive";
-            }
+            setSeqStepFromState(synthIx, stepIx); 
         }
     }
 }
@@ -260,25 +289,8 @@ function onSeqClick(synthIx, clickR, clickC) {
     seqStepToggleVoiceLifo(seqStep, midiNote); 
 
     // Update UI
-    let synthUI = gJamUI.synthUIs[synthIx];
-    // Reset styles of all voices first
-    for (let r = 0; r < synthUI.numRows; ++r) {
-        let btn = synthUI.seqButtons[r*synthUI.numCols + clickC];
-        btn.className = "sequencerCell sequencerCellInactive";
-    }
-    // Set style of active voices
-    for (let vIx = 0; vIx < seqStep.length; ++vIx) {
-        let note = seqStep[vIx];
-        if (note < 0) {
-            continue;
-        }
-        let btn = midiStepToSynthUIBtn(synthIx, stepIx, note);
-        if (btn === null) {
-            continue;
-        }
-        btn.className = "sequencerCell sequencerCellActive";
-    }
-
+    setSeqStepFromState(synthIx, stepIx); 
+    
     if (gSocket !== null) {
         let msg = {
             SynthSeq: {
