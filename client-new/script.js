@@ -26,6 +26,36 @@ function createEmptySeq(numSteps, numVoices) {
     return seq;
 }
 
+function seqStepToggleVoiceFifo(seqStep, midiNote) {
+    // Check if this note is already active. If so, remove from queue.
+    let foundIx = -1;
+    for (let ii = 0; ii < seqStep.length; ++ii) {
+        if (seqStep[ii] === midiNote) {
+            foundIx = ii;
+            break;
+        }
+    }
+    if (foundIx >= 0) {
+        for (let ii = foundIx; ii < seqStep.length - 1; ++ii) {
+            seqStep[ii] = seqStep[ii+1];
+        }
+        seqStep[seqStep.length - 1] = -1;
+        return;
+    }
+    // Check if there are unused voices
+    for (let ii = 0; ii < seqStep.length; ++ii) {
+        if (seqStep[ii] < 0) {
+            seqStep[ii] = midiNote;
+            return;
+        }
+    }
+    // If all voices are used, pop oldest one and add new one.
+    for (let ii = 0; ii < seqStep.length - 1; ++ii) {
+        seqStep[ii] = seqStep[ii+1];
+    }
+    seqStep[seqStep.length - 1] = midiNote;
+}
+
 // init gJamState
 {
     gJamState = {
@@ -211,6 +241,7 @@ function buildSynthUI(rootNode, synthIx) {
             col.className = "sequencerTd";
             let btn = createElementAsChild(col, "button");
             btn.className = "sequencerCell sequencerCellInactive";
+            btn.addEventListener("click", () => onSeqClick(synthIx, r, c));  
             seqButtons.push(btn);
         }
     }
@@ -221,6 +252,43 @@ function buildSynthUI(rootNode, synthIx) {
         startNote: 60, // C4
         seqButtons: seqButtons
     };
+}
+
+// IDEA: what if the order of the voices were _always_ FIFO? I think that's a great idea, let's do that.
+function onSeqClick(synthIx, clickR, clickC) {
+    // TODO add the socket message stuff
+    console.log("CLICK " + synthIx + " " + clickR + " " + clickC);
+    let synthSeq = gJamState.synthSeqs[synthIx];
+    let midiNote = seqRowToMidiNote(synthIx, clickR);
+    let stepIx = clickC;
+    let seqStep = synthSeq[stepIx];
+    seqStepToggleVoiceFifo(seqStep, midiNote); 
+
+    // Update UI
+    let synthUI = gJamUI.synthUIs[synthIx];
+    // Reset styles of all voices first
+    for (let r = 0; r < synthUI.numRows; ++r) {
+        let btn = synthUI.seqButtons[r*synthUI.numCols + clickC];
+        btn.className = "sequencerCell sequencerCellInactive";
+    }
+    // Set style of active voices
+    for (let vIx = 0; vIx < seqStep.length; ++vIx) {
+        let note = seqStep[vIx];
+        if (note < 0) {
+            break;
+        }
+        let btn = midiStepToSynthUIBtn(synthIx, stepIx, note);
+        if (btn === null) {
+            continue;
+        }
+        btn.className = "sequencerCell sequencerCellActive";
+    }
+}
+
+function seqRowToMidiNote(synthIx, r) {
+    let synthUI = gJamUI.synthUIs[synthIx];
+    let noteOffset = (synthUI.numRows - 1) - r;
+    return synthUI.startNote + noteOffset;
 }
 
 function midiStepToSynthUIBtn(synthIx, stepIx, midiNote) {
