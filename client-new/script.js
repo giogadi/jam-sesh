@@ -252,7 +252,6 @@ function buildSynthUI(rootNode, synthIx) {
 
 // IDEA: what if the order of the voices were _always_ FIFO? I think that's a great idea, let's do that.
 function onSeqClick(synthIx, clickR, clickC) {
-    // TODO add the socket message stuff
     // console.log("CLICK " + synthIx + " " + clickR + " " + clickC);
     let synthSeq = gJamState.synthSeqs[synthIx];
     let midiNote = seqRowToMidiNote(synthIx, clickR);
@@ -278,6 +277,20 @@ function onSeqClick(synthIx, clickR, clickC) {
             continue;
         }
         btn.className = "sequencerCell sequencerCellActive";
+    }
+
+    if (gSocket !== null) {
+        let msg = {
+            SynthSeq: {
+                synth_ix: synthIx,
+                beat_ix: stepIx,
+                active_cell_ixs: seqStep.slice(),
+                clicked_cell_ix: midiNote
+            }
+        };
+        const jsonMsg = JSON.stringify(msg);
+        gSocket.send(jsonMsg);
+        console.log("Sent " + jsonMsg);
     }
 }
 
