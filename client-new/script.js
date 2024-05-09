@@ -26,34 +26,30 @@ function createEmptySeq(numSteps, numVoices) {
     return seq;
 }
 
-function seqStepToggleVoiceFifo(seqStep, midiNote) {
-    // Check if this note is already active. If so, remove from queue.
-    let foundIx = -1;
+// Maintains invariant that first active cell is the most recently activated one.
+function seqStepToggleVoiceLifo(seqStep, midiNote) {
+    // Check if this note is already active.
     for (let ii = 0; ii < seqStep.length; ++ii) {
         if (seqStep[ii] === midiNote) {
-            foundIx = ii;
-            break;
+            seqStep[ii] = -1;
+            return;
         }
-    }
-    if (foundIx >= 0) {
-        for (let ii = foundIx; ii < seqStep.length - 1; ++ii) {
-            seqStep[ii] = seqStep[ii+1];
-        }
-        seqStep[seqStep.length - 1] = -1;
-        return;
-    }
-    // Check if there are unused voices
+    } 
+    // Check if there are unused voices.
     for (let ii = 0; ii < seqStep.length; ++ii) {
         if (seqStep[ii] < 0) {
+            seqStep[ii] = seqStep[0];
+            seqStep[0] = midiNote;
+            return;
+        }
+    }
+    // If all voices are used, replace first active one (it'll be most recent).
+    for (let ii = 0; ii < seqStep.length; ++ii) {
+        if (seqStep[ii] >= 0) {
             seqStep[ii] = midiNote;
             return;
         }
     }
-    // If all voices are used, pop oldest one and add new one.
-    for (let ii = 0; ii < seqStep.length - 1; ++ii) {
-        seqStep[ii] = seqStep[ii+1];
-    }
-    seqStep[seqStep.length - 1] = midiNote;
 }
 
 // init gJamState
@@ -257,12 +253,12 @@ function buildSynthUI(rootNode, synthIx) {
 // IDEA: what if the order of the voices were _always_ FIFO? I think that's a great idea, let's do that.
 function onSeqClick(synthIx, clickR, clickC) {
     // TODO add the socket message stuff
-    console.log("CLICK " + synthIx + " " + clickR + " " + clickC);
+    // console.log("CLICK " + synthIx + " " + clickR + " " + clickC);
     let synthSeq = gJamState.synthSeqs[synthIx];
     let midiNote = seqRowToMidiNote(synthIx, clickR);
     let stepIx = clickC;
     let seqStep = synthSeq[stepIx];
-    seqStepToggleVoiceFifo(seqStep, midiNote); 
+    seqStepToggleVoiceLifo(seqStep, midiNote); 
 
     // Update UI
     let synthUI = gJamUI.synthUIs[synthIx];
@@ -275,7 +271,7 @@ function onSeqClick(synthIx, clickR, clickC) {
     for (let vIx = 0; vIx < seqStep.length; ++vIx) {
         let note = seqStep[vIx];
         if (note < 0) {
-            break;
+            continue;
         }
         let btn = midiStepToSynthUIBtn(synthIx, stepIx, note);
         if (btn === null) {
